@@ -117,22 +117,60 @@ serve(async (req) => {
         break;
 
       case 'get-report-parameters':
-        // Try to get report parameters - use items/{id}/report-parameters for Cloud
-        const paramsUrl = `${BASE_URL}/v1.0/items/${reportId}/report-parameters`;
-        console.log('Fetching parameters from:', paramsUrl);
-        
-        response = await fetch(paramsUrl, {
-          method: 'GET',
-          headers,
-        });
-        
-        // If 404, report has no parameters - return empty array
-        if (response.status === 404) {
+        // Try multiple possible endpoints for parameters
+        const endpointsToTry = [
+          `${BASE_URL}/v2.0/reports/${reportId}/parameters`,
+          `${BASE_URL}/v1.0/reports/${reportId}/parameters`,
+          `${BASE_URL}/v1.0/items/${reportId}/report-parameters`,
+          `${BASE_URL}/v2.0/items/${reportId}/parameters`,
+        ];
+
+        let paramsResponse = null;
+        let paramsData = null;
+
+        for (const url of endpointsToTry) {
+          console.log('Trying parameters endpoint:', url);
+          const resp = await fetch(url, {
+            method: 'GET',
+            headers,
+          });
+          
+          console.log('Response status for', url, ':', resp.status);
+          
+          if (resp.ok) {
+            const text = await resp.text();
+            console.log('Found parameters at:', url, 'Response:', text.substring(0, 200));
+            try {
+              paramsData = JSON.parse(text);
+              paramsResponse = resp;
+              break;
+            } catch {
+              console.log('Failed to parse response as JSON');
+            }
+          } else {
+            // Consume the response body to avoid resource leak
+            await resp.text();
+          }
+        }
+
+        if (paramsData) {
+          // Handle both array response and object with value property
+          const params = Array.isArray(paramsData) 
+            ? paramsData 
+            : (paramsData.value || paramsData.Parameters || paramsData.parameters || []);
+          
           return new Response(
-            JSON.stringify({ success: true, data: [], status: 200 }),
+            JSON.stringify({ success: true, data: params, status: 200 }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+        
+        // No parameters found - return empty array
+        console.log('No parameters endpoint returned data, returning empty array');
+        return new Response(
+          JSON.stringify({ success: true, data: [], status: 200 }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
         break;
 
       case 'export-report':
