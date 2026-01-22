@@ -4,13 +4,26 @@ export interface BoldReport {
   Description?: string;
   CategoryId?: string;
   CategoryName?: string;
-  CreatedById?: string;
+  CreatedById?: number;
   CreatedByDisplayName?: string;
   CreatedDate?: string;
-  ModifiedById?: string;
+  ModifiedById?: number;
+  ModifiedByFullName?: string;
   ModifiedByDisplayName?: string;
   ModifiedDate?: string;
-  ItemType?: string;
+  ItemType?: number;
+  ItemCreatedDate?: string;
+  ItemModifiedDate?: string;
+  Tags?: string[];
+  CanRead?: boolean;
+  CanWrite?: boolean;
+  CanDelete?: boolean;
+  CanDownload?: boolean;
+  CanSchedule?: boolean;
+  CanOpen?: boolean;
+  CanMove?: boolean;
+  CanCopy?: boolean;
+  CanClone?: boolean;
 }
 
 export interface ReportParameter {
