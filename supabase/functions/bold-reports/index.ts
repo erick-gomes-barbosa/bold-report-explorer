@@ -15,19 +15,35 @@ serve(async (req) => {
   }
 
   try {
+    // Log for debugging (without exposing full token)
+    console.log('BOLD_SITE_ID:', BOLD_SITE_ID);
+    console.log('BOLD_TOKEN present:', !!BOLD_TOKEN);
+    console.log('BASE_URL:', BASE_URL);
+
+    if (!BOLD_SITE_ID || !BOLD_TOKEN) {
+      return new Response(
+        JSON.stringify({ error: 'Missing BOLD_SITE_ID or BOLD_TOKEN configuration' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { action, reportId, parameters, format } = await req.json();
 
     const headers = {
       'Authorization': `Bearer ${BOLD_TOKEN}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     };
 
     let response;
 
     switch (action) {
       case 'list-reports':
-        // Get all items from Bold Reports
-        response = await fetch(`${BASE_URL}/v2.0/items?itemType=Report`, {
+        // Get all items from Bold Reports - using v1.0 for Cloud
+        const listUrl = `${BASE_URL}/v1.0/items?itemType=Report`;
+        console.log('Fetching reports from:', listUrl);
+        
+        response = await fetch(listUrl, {
           method: 'GET',
           headers,
         });
@@ -35,7 +51,10 @@ serve(async (req) => {
 
       case 'get-report-parameters':
         // Get report parameters
-        response = await fetch(`${BASE_URL}/v1.0/reports/${reportId}/parameters`, {
+        const paramsUrl = `${BASE_URL}/v1.0/reports/${reportId}/parameters`;
+        console.log('Fetching parameters from:', paramsUrl);
+        
+        response = await fetch(paramsUrl, {
           method: 'GET',
           headers,
         });
@@ -55,7 +74,10 @@ serve(async (req) => {
           }));
         }
 
-        response = await fetch(`${BASE_URL}/v1.0/reports/export`, {
+        const exportUrl = `${BASE_URL}/v1.0/reports/export`;
+        console.log('Exporting from:', exportUrl);
+
+        response = await fetch(exportUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(exportBody),
@@ -94,7 +116,16 @@ serve(async (req) => {
       );
     }
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log('API Response status:', response.status);
+    console.log('API Response:', responseText.substring(0, 500));
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { raw: responseText };
+    }
     
     return new Response(
       JSON.stringify({ success: response.ok, data, status: response.status }),
