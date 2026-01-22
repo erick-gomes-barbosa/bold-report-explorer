@@ -6,8 +6,56 @@ const corsHeaders = {
 };
 
 const BOLD_SITE_ID = Deno.env.get('BOLD_SITE_ID');
-const BOLD_TOKEN = Deno.env.get('BOLD_TOKEN');
+const BOLD_EMAIL = Deno.env.get('BOLD_EMAIL');
+const BOLD_PASSWORD = Deno.env.get('BOLD_PASSWORD');
 const BASE_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`;
+const TOKEN_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/token`;
+
+// Cache for access token
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getAccessToken(): Promise<string> {
+  // Check if we have a valid cached token
+  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+    console.log('Using cached token');
+    return cachedToken.token;
+  }
+
+  console.log('Generating new access token...');
+  
+  const formData = new URLSearchParams();
+  formData.append('grant_type', 'password');
+  formData.append('username', BOLD_EMAIL || '');
+  formData.append('password', BOLD_PASSWORD || '');
+
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: formData.toString(),
+  });
+
+  const responseText = await response.text();
+  console.log('Token response status:', response.status);
+
+  if (!response.ok) {
+    console.error('Token error response:', responseText);
+    throw new Error(`Failed to get access token: ${responseText}`);
+  }
+
+  const tokenData = JSON.parse(responseText);
+  
+  // Cache token with expiration (subtract 5 minutes for safety)
+  const expiresIn = tokenData.expires_in || 3600;
+  cachedToken = {
+    token: tokenData.access_token,
+    expiresAt: Date.now() + (expiresIn - 300) * 1000,
+  };
+
+  console.log('Token generated successfully');
+  return tokenData.access_token;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,22 +63,24 @@ serve(async (req) => {
   }
 
   try {
-    // Log for debugging (without exposing full token)
     console.log('BOLD_SITE_ID:', BOLD_SITE_ID);
-    console.log('BOLD_TOKEN present:', !!BOLD_TOKEN);
-    console.log('BASE_URL:', BASE_URL);
+    console.log('BOLD_EMAIL present:', !!BOLD_EMAIL);
+    console.log('BOLD_PASSWORD present:', !!BOLD_PASSWORD);
 
-    if (!BOLD_SITE_ID || !BOLD_TOKEN) {
+    if (!BOLD_SITE_ID || !BOLD_EMAIL || !BOLD_PASSWORD) {
       return new Response(
-        JSON.stringify({ error: 'Missing BOLD_SITE_ID or BOLD_TOKEN configuration' }),
+        JSON.stringify({ error: 'Missing Bold Reports configuration' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const { action, reportId, parameters, format } = await req.json();
 
+    // Get fresh access token
+    const accessToken = await getAccessToken();
+
     const headers = {
-      'Authorization': `Bearer ${BOLD_TOKEN}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
@@ -39,7 +89,6 @@ serve(async (req) => {
 
     switch (action) {
       case 'list-reports':
-        // Get all items from Bold Reports - using v1.0 for Cloud
         const listUrl = `${BASE_URL}/v1.0/items?itemType=Report`;
         console.log('Fetching reports from:', listUrl);
         
@@ -50,7 +99,6 @@ serve(async (req) => {
         break;
 
       case 'get-report-parameters':
-        // Get report parameters
         const paramsUrl = `${BASE_URL}/v1.0/reports/${reportId}/parameters`;
         console.log('Fetching parameters from:', paramsUrl);
         
@@ -61,7 +109,6 @@ serve(async (req) => {
         break;
 
       case 'export-report':
-        // Export report with parameters
         const exportBody: Record<string, unknown> = {
           ReportId: reportId,
           ExportType: format || 'PDF',

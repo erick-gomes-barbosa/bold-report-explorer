@@ -47,16 +47,16 @@ export function ReportCard({ report, isSelected, onClick }: ReportCardProps) {
           </p>
         )}
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-          {report.ModifiedDate && (
+          {(report.ModifiedDate || report.ItemModifiedDate) && (
             <span className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              {formatDate(report.ModifiedDate)}
+              {formatDate(report.ItemModifiedDate || report.ModifiedDate)}
             </span>
           )}
-          {report.ModifiedByDisplayName && (
+          {(report.ModifiedByFullName || report.ModifiedByDisplayName) && (
             <span className="flex items-center gap-1">
               <User className="h-3 w-3" />
-              {report.ModifiedByDisplayName}
+              {report.ModifiedByFullName || report.ModifiedByDisplayName}
             </span>
           )}
         </div>

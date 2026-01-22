@@ -19,8 +19,8 @@ export function useBoldReports() {
 
       if (fnError) throw fnError;
       
-      if (data?.success && data?.data?.value) {
-        setReports(data.data.value);
+      if (data?.success && Array.isArray(data?.data)) {
+        setReports(data.data);
       } else if (data?.data?.Message) {
         throw new Error(data.data.Message);
       }
