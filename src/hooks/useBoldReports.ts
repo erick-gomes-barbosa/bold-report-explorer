@@ -83,7 +83,7 @@ export function useBoldReports() {
           byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
         const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: data.contentType || 'application/pdf' });
+        const blob = new Blob([byteArray], { type: data.contentType });
         
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
