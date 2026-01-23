@@ -117,77 +117,71 @@ serve(async (req) => {
         break;
 
       case 'get-report-parameters':
-        // Try multiple possible endpoints for parameters
-        const endpointsToTry = [
-          `${BASE_URL}/v2.0/reports/${reportId}/parameters`,
+        // Try both documented endpoint formats for v1.0:
+        // Format 1: GET /v1.0/reports/{id}/parameters
+        // Format 2: GET /v1.0/reports/parameters/{id}
+        const paramEndpoints = [
           `${BASE_URL}/v1.0/reports/${reportId}/parameters`,
-          `${BASE_URL}/v1.0/items/${reportId}/report-parameters`,
-          `${BASE_URL}/v2.0/items/${reportId}/parameters`,
+          `${BASE_URL}/v1.0/reports/parameters/${reportId}`,
         ];
-
-        let paramsResponse = null;
-        let paramsData = null;
-
-        for (const url of endpointsToTry) {
+        
+        let foundParams = null;
+        
+        for (const url of paramEndpoints) {
           console.log('Trying parameters endpoint:', url);
+          
           const resp = await fetch(url, {
             method: 'GET',
             headers,
           });
           
+          const text = await resp.text();
           console.log('Response status for', url, ':', resp.status);
+          console.log('Response body:', text.substring(0, 300));
           
-          if (resp.ok) {
-            const text = await resp.text();
-            console.log('Found parameters at:', url, 'Response:', text.substring(0, 200));
+          if (resp.ok && text) {
             try {
-              paramsData = JSON.parse(text);
-              paramsResponse = resp;
-              break;
-            } catch {
-              console.log('Failed to parse response as JSON');
+              const parsed = JSON.parse(text);
+              // Handle various response formats
+              const params = Array.isArray(parsed) 
+                ? parsed 
+                : (parsed.value || parsed.Parameters || parsed.parameters || parsed);
+              
+              if (Array.isArray(params) && params.length > 0) {
+                foundParams = params;
+                console.log('Found', params.length, 'parameters at:', url);
+                break;
+              }
+            } catch (e) {
+              console.log('Failed to parse response:', e);
             }
-          } else {
-            // Consume the response body to avoid resource leak
-            await resp.text();
           }
         }
-
-        if (paramsData) {
-          // Handle both array response and object with value property
-          const params = Array.isArray(paramsData) 
-            ? paramsData 
-            : (paramsData.value || paramsData.Parameters || paramsData.parameters || []);
-          
-          return new Response(
-            JSON.stringify({ success: true, data: params, status: 200 }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
         
-        // No parameters found - return empty array
-        console.log('No parameters endpoint returned data, returning empty array');
         return new Response(
-          JSON.stringify({ success: true, data: [], status: 200 }),
+          JSON.stringify({ success: true, data: foundParams || [], status: 200 }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
         break;
 
       case 'export-report':
+        // API v1.0 endpoint: POST /v1.0/reports/export
+        // Body format: { Id: string, Format: string, Parameters: [{ Name: string, Values: string[] }] }
         const exportBody: Record<string, unknown> = {
-          ReportId: reportId,
-          ExportType: format || 'PDF',
+          Id: reportId,
+          Format: format || 'PDF',
         };
 
         if (parameters && Object.keys(parameters).length > 0) {
           exportBody.Parameters = Object.entries(parameters).map(([name, value]) => ({
             Name: name,
-            Values: Array.isArray(value) ? value : [value],
+            Values: Array.isArray(value) ? value.map(String) : [String(value)],
           }));
         }
 
         const exportUrl = `${BASE_URL}/v1.0/reports/export`;
         console.log('Exporting from:', exportUrl);
+        console.log('Export body:', JSON.stringify(exportBody));
 
         response = await fetch(exportUrl, {
           method: 'POST',
