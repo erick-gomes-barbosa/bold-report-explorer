@@ -165,29 +165,29 @@ serve(async (req) => {
         break;
 
       case 'export-report':
-        // API v1.0 endpoint: POST /v1.0/reports/export
-        // Body format: { Id: string, Format: string, Parameters: [{ Name: string, Values: string[] }] }
-        const exportBody: Record<string, unknown> = {
-          Id: reportId,
-          Format: format || 'PDF',
-        };
-
-        if (parameters && Object.keys(parameters).length > 0) {
-          exportBody.Parameters = Object.entries(parameters).map(([name, value]) => ({
-            Name: name,
-            Values: Array.isArray(value) ? value.map(String) : [String(value)],
-          }));
-        }
-
-        const exportUrl = `${BASE_URL}/v1.0/reports/export`;
+        // API v1.0 endpoint: POST /v1.0/reports/{reportId}/{exportType}/export-filter
+        // Body format: array of parameter objects [{ Name: string, Values: string[] }]
+        const exportFormat = format || 'PDF';
+        const exportUrl = `${BASE_URL}/v1.0/reports/${reportId}/${exportFormat}/export-filter`;
+        
+        // Build parameters array for the body
+        const exportParams = parameters && Object.keys(parameters).length > 0
+          ? Object.entries(parameters).map(([name, value]) => ({
+              Name: name,
+              Values: Array.isArray(value) ? value.map(String) : [String(value)],
+            }))
+          : [];
+        
         console.log('Exporting from:', exportUrl);
-        console.log('Export body:', JSON.stringify(exportBody));
+        console.log('Export params:', JSON.stringify(exportParams));
 
         response = await fetch(exportUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify(exportBody),
+          body: JSON.stringify(exportParams),
         });
+
+        console.log('Export response status:', response.status);
 
         if (response.ok) {
           const blob = await response.blob();
@@ -199,7 +199,7 @@ serve(async (req) => {
               success: true, 
               data: base64,
               contentType: response.headers.get('content-type'),
-              filename: `report.${format?.toLowerCase() || 'pdf'}`
+              filename: `report.${exportFormat.toLowerCase()}`
             }),
             { 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
