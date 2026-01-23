@@ -26,15 +26,26 @@ export interface BoldReport {
   CanClone?: boolean;
 }
 
+export interface AvailableValue {
+  DisplayField: string;
+  ValueField: string;
+  IsSelected?: boolean;
+}
+
 export interface ReportParameter {
   Name: string;
   Prompt?: string;
   DataType: 'String' | 'Boolean' | 'DateTime' | 'Integer' | 'Float';
+  AllowNull?: boolean;
   AllowBlank?: boolean;
-  MultiValue?: boolean;
-  Hidden?: boolean;
+  HasDefault?: boolean;
   DefaultValues?: string[];
+  AvailableValues?: AvailableValue[];
+  ElementType?: 'ComboBox' | 'MultiValue' | 'TextBox' | 'CheckBox' | 'DateTimePicker';
+  Hidden?: boolean;
+  // Legacy format support
   ValidValues?: { Label: string; Value: string }[];
+  MultiValue?: boolean;
 }
 
 export type ExportFormat = 'PDF' | 'Excel' | 'Word' | 'HTML' | 'CSV' | 'PPT';
