@@ -166,25 +166,25 @@ serve(async (req) => {
 
       case 'export-report':
         // API v1.0 endpoint: POST /v1.0/reports/{reportId}/{exportType}/export-filter
-        // Body format: array of parameter objects [{ Name: string, Values: string[] }]
+        // Body format: object with parameter key-value pairs { "ParamName": "Value" } or { "ParamName": ["Val1", "Val2"] }
         const exportFormat = format || 'PDF';
         const exportUrl = `${BASE_URL}/v1.0/reports/${reportId}/${exportFormat}/export-filter`;
         
-        // Build parameters array for the body
-        const exportParams = parameters && Object.keys(parameters).length > 0
-          ? Object.entries(parameters).map(([name, value]) => ({
-              Name: name,
-              Values: Array.isArray(value) ? value.map(String) : [String(value)],
-            }))
-          : [];
+        // Build parameters object for the body - simple key-value format
+        const exportBody: Record<string, string | string[]> = {};
+        if (parameters && Object.keys(parameters).length > 0) {
+          Object.entries(parameters).forEach(([name, value]) => {
+            exportBody[name] = Array.isArray(value) ? value.map(String) : String(value);
+          });
+        }
         
         console.log('Exporting from:', exportUrl);
-        console.log('Export params:', JSON.stringify(exportParams));
+        console.log('Export body:', JSON.stringify(exportBody));
 
         response = await fetch(exportUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify(exportParams),
+          body: JSON.stringify(exportBody),
         });
 
         console.log('Export response status:', response.status);
