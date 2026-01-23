@@ -12,6 +12,16 @@ const BOLD_PASSWORD = Deno.env.get('BOLD_PASSWORD');
 const BASE_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`;
 const TOKEN_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/token`;
 
+// Format mapping for correct file extensions and MIME types
+const FORMAT_MAPPING: Record<string, { extension: string; mimeType: string }> = {
+  'PDF': { extension: 'pdf', mimeType: 'application/pdf' },
+  'Excel': { extension: 'xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  'Word': { extension: 'docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+  'CSV': { extension: 'csv', mimeType: 'text/csv' },
+  'HTML': { extension: 'html', mimeType: 'text/html' },
+  'PPT': { extension: 'pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
+};
+
 // Cache for access token
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
@@ -194,12 +204,18 @@ serve(async (req) => {
           const arrayBuffer = await blob.arrayBuffer();
           const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
           
+          // Get correct extension and MIME type from mapping
+          const formatInfo = FORMAT_MAPPING[exportFormat] || { 
+            extension: exportFormat.toLowerCase(), 
+            mimeType: 'application/octet-stream' 
+          };
+          
           return new Response(
             JSON.stringify({ 
               success: true, 
               data: base64,
-              contentType: response.headers.get('content-type'),
-              filename: `report.${exportFormat.toLowerCase()}`
+              contentType: formatInfo.mimeType,
+              filename: `report.${formatInfo.extension}`
             }),
             { 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
