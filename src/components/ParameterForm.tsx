@@ -66,18 +66,23 @@ export function ParameterForm({ parameters, values, onChange }: ParameterFormPro
   }
 
   // Get available values - support both new and legacy format
+  // Filter out any options with empty values to prevent Select.Item errors
   const getAvailableOptions = (param: ReportParameter): { label: string; value: string }[] => {
     if (param.AvailableValues?.length) {
-      return param.AvailableValues.map(av => ({
-        label: av.DisplayField,
-        value: av.ValueField,
-      }));
+      return param.AvailableValues
+        .filter(av => av.ValueField && av.ValueField.trim() !== '')
+        .map(av => ({
+          label: av.DisplayField || av.ValueField,
+          value: av.ValueField,
+        }));
     }
     if (param.ValidValues?.length) {
-      return param.ValidValues.map(vv => ({
-        label: vv.Label,
-        value: vv.Value,
-      }));
+      return param.ValidValues
+        .filter(vv => vv.Value && vv.Value.trim() !== '')
+        .map(vv => ({
+          label: vv.Label || vv.Value,
+          value: vv.Value,
+        }));
     }
     return [];
   };
