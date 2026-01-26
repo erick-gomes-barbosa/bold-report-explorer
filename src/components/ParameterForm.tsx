@@ -15,9 +15,22 @@ export function ParameterForm({ parameters, values, onChange }: ParameterFormPro
   const visibleParams = parameters.filter(p => !p.Hidden);
 
   const handleChange = (name: string, value: string | string[] | boolean) => {
+    // Always store as array for consistency with the API v5.0 requirement
+    let normalizedValue: string | string[];
+    
+    if (Array.isArray(value)) {
+      normalizedValue = value;
+    } else if (typeof value === 'boolean') {
+      normalizedValue = String(value);
+    } else if (value === null || value === undefined || value === '') {
+      normalizedValue = '';
+    } else {
+      normalizedValue = String(value);
+    }
+    
     onChange({
       ...values,
-      [name]: typeof value === 'boolean' ? String(value) : value,
+      [name]: normalizedValue,
     });
   };
 

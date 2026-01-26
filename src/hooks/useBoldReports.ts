@@ -64,12 +64,23 @@ export function useBoldReports() {
     setError(null);
     
     try {
+      // Normalize parameters: ensure they're in the expected format for the API
+      // The API expects a Record<string, string | string[]>
+      const normalizedParams: Record<string, string | string[]> = {};
+      Object.entries(parameterValues).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          normalizedParams[key] = value;
+        } else if (value !== null && value !== undefined && value !== '') {
+          normalizedParams[key] = String(value);
+        }
+      });
+
       const { data, error: fnError } = await supabase.functions.invoke('bold-reports', {
         body: { 
           action: 'export-report', 
           reportId, 
           format,
-          parameters: parameterValues 
+          parameters: normalizedParams 
         },
       });
 

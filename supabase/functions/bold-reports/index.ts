@@ -186,21 +186,38 @@ serve(async (req) => {
         break;
 
       case 'export-report':
-        // API v1.0 endpoint: POST /v1.0/reports/{reportId}/{exportType}/export-filter
-        // Body format: object with parameter key-value pairs { "ParamName": "Value" } or { "ParamName": ["Val1", "Val2"] }
-        const exportFormat = format || 'PDF';
-        const exportUrl = `${BASE_URL}/v1.0/reports/${reportId}/${exportFormat}/export-filter`;
+        // API Cloud v5.0 endpoint: POST /v5.0/reports/export
+        // This endpoint requires FilterParameters to be a JSON string with arrays
+        // Documentation: https://documentation.boldreports.com/embedded/rest-api/api-reference/export-report/
         
-        // Build parameters object for the body - simple key-value format
-        const exportBody: Record<string, string | string[]> = {};
+        const exportFormat = format || 'PDF';
+        const exportUrl = `${BASE_URL}/v5.0/reports/export`;
+        
+        // Transform parameters: ensure all values are arrays (for multi-value support)
+        const paramsObject: Record<string, string[]> = {};
         if (parameters && Object.keys(parameters).length > 0) {
           Object.entries(parameters).forEach(([name, value]) => {
-            exportBody[name] = Array.isArray(value) ? value.map(String) : String(value);
+            // Convert everything to array of strings
+            if (Array.isArray(value)) {
+              paramsObject[name] = value.map(String);
+            } else if (value !== null && value !== undefined && value !== '') {
+              paramsObject[name] = [String(value)];
+            }
           });
         }
         
+        // Serialize parameters as JSON string (the key part!)
+        const filterParametersJson = JSON.stringify(paramsObject);
+        
+        const exportBody = {
+          ReportId: reportId,
+          ExportType: exportFormat,
+          FilterParameters: filterParametersJson
+        };
+        
         console.log('Exporting from:', exportUrl);
-        console.log('Export body:', JSON.stringify(exportBody));
+        console.log('Export parameters:', paramsObject);
+        console.log('Export body:', JSON.stringify(exportBody, null, 2));
 
         response = await fetch(exportUrl, {
           method: 'POST',
