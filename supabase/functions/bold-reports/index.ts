@@ -228,42 +228,57 @@ serve(async (req) => {
         console.log('Export response status:', response.status);
 
         if (response.ok) {
-          // Get the response as ArrayBuffer
-          const arrayBuffer = await response.arrayBuffer();
-          
-          // Convert ArrayBuffer to base64 using proper Deno method
-          const uint8Array = new Uint8Array(arrayBuffer);
-          let binaryString = '';
-          for (let i = 0; i < uint8Array.byteLength; i++) {
-            binaryString += String.fromCharCode(uint8Array[i]);
+          // API returns JSON with FileContent (Base64 encoded)
+          const responseText = await response.text();
+          let data;
+          try {
+            data = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error('Failed to parse API response:', parseError);
+            throw new Error('Invalid API response format - expected JSON');
           }
-          const base64 = btoa(binaryString);
           
-          // Get correct extension and MIME type from mapping
+          // Check if FileContent exists and is not empty
+          if (!data.FileContent) {
+            throw new Error('API returned empty FileContent');
+          }
+          
+          const base64Content = data.FileContent;
           const formatInfo = FORMAT_MAPPING[exportFormat] || { 
             extension: exportFormat.toLowerCase(), 
             mimeType: 'application/octet-stream' 
           };
           
+          // Calculate size from base64 (approximately)
+          const estimatedSize = Math.ceil(base64Content.length * 0.75);
+          
           console.log('Export successful:', {
             format: exportFormat,
-            size: arrayBuffer.byteLength,
+            size: estimatedSize,
             contentType: formatInfo.mimeType,
-            filename: `report.${formatInfo.extension}`
+            filename: `report.${formatInfo.extension}`,
+            base64Length: base64Content.length
           });
           
           return new Response(
             JSON.stringify({ 
               success: true, 
-              data: base64,
+              data: base64Content,
               contentType: formatInfo.mimeType,
               filename: `report.${formatInfo.extension}`,
-              size: arrayBuffer.byteLength
+              size: estimatedSize
             }),
             { 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
             }
           );
+        } else {
+          const errorText = await response.text();
+          console.error('Export failed:', {
+            status: response.status,
+            body: errorText.substring(0, 500)
+          });
+          throw new Error(`Export failed: ${response.status} - ${errorText.substring(0, 200)}`);
         }
         break;
 

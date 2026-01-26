@@ -2,6 +2,20 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { BoldReport, ReportParameter, ExportFormat } from '@/types/boldReports';
 
+// Helper function to get correct file extension based on format
+function getFileExtension(format: ExportFormat): string {
+  const extensionMap: Record<ExportFormat, string> = {
+    'PDF': 'pdf',
+    'Excel': 'xlsx',
+    'Word': 'docx',
+    'CSV': 'csv',
+    'HTML': 'html',
+    'PPT': 'pptx',
+  };
+  
+  return extensionMap[format] || format.toLowerCase();
+}
+
 export function useBoldReports() {
   const [reports, setReports] = useState<BoldReport[]>([]);
   const [parameters, setParameters] = useState<ReportParameter[]>([]);
@@ -87,13 +101,22 @@ export function useBoldReports() {
       if (fnError) throw fnError;
       
       if (data?.success && data?.data) {
-        // Decode base64 properly
-        // Remove any whitespace that might have been added
-        const cleanBase64 = data.data.replace(/\s+/g, '');
-        
         try {
+          // Clean base64 (remove whitespace that might have been added by transmission)
+          const cleanBase64 = data.data.replace(/\s+/g, '');
+          
+          // Validate base64 format
+          if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleanBase64)) {
+            throw new Error('Base64 inválido - contém caracteres não permitidos');
+          }
+          
           // Decode base64 to binary string
-          const byteCharacters = atob(cleanBase64);
+          let byteCharacters: string;
+          try {
+            byteCharacters = atob(cleanBase64);
+          } catch (atobError) {
+            throw new Error(`Falha ao decodificar Base64: ${atobError instanceof Error ? atobError.message : 'desconhecido'}`);
+          }
           
           // Convert binary string to byte array
           const byteArray = new Uint8Array(byteCharacters.length);
@@ -107,30 +130,45 @@ export function useBoldReports() {
           
           // Verify blob is not empty
           if (blob.size === 0) {
-            throw new Error('Arquivo exportado está vazio');
+            throw new Error('Arquivo exportado está vazio (0 bytes)');
           }
           
+          // Get proper file extension based on format
+          const extension = getFileExtension(format);
+          
+          // Generate filename with timestamp and correct extension
+          const timestamp = new Date().getTime();
+          const filename = `relatorio_${timestamp}.${extension}`;
+          
           console.log('Download iniciado:', {
-            filename: data.filename,
+            filename: filename,
             size: blob.size,
-            type: mimeType
+            type: mimeType,
+            format: format,
+            expectedExtension: extension
           });
           
           // Create download link and trigger
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = data.filename || `report.${format.toLowerCase()}`;
+          link.download = filename;
+          link.style.display = 'none';
           document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
           
-          // Cleanup
-          setTimeout(() => window.URL.revokeObjectURL(url), 100);
+          // Trigger download
+          link.click();
+          
+          // Cleanup - wait a bit before revoking to ensure browser has time to download
+          setTimeout(() => {
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          }, 100);
           
           return true;
         } catch (decodeError) {
-          throw new Error(`Erro ao decodificar arquivo: ${decodeError instanceof Error ? decodeError.message : 'desconhecido'}`);
+          const errorMessage = decodeError instanceof Error ? decodeError.message : 'desconhecido';
+          throw new Error(`Erro ao processar arquivo exportado: ${errorMessage}`);
         }
       } else if (data?.data?.Message) {
         throw new Error(data.data.Message);
