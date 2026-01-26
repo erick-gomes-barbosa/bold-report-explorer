@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileSpreadsheet, FileText, FileType, Loader2 } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, FileType, Loader2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ParameterForm } from './ParameterForm';
@@ -10,6 +10,7 @@ interface ExportPanelProps {
   parameters: ReportParameter[];
   loading: boolean;
   onExport: (format: ExportFormat, params: Record<string, string | string[]>) => void;
+  onView?: (params: Record<string, string | string[]>) => void;
 }
 
 // Format-specific colors that blend with the earthy palette
@@ -53,12 +54,16 @@ const exportFormats: { format: ExportFormat; label: string; icon: React.ReactNod
   { format: 'CSV', label: 'CSV', icon: <FileSpreadsheet className="h-4 w-4" /> },
 ];
 
-export function ExportPanel({ report, parameters, loading, onExport }: ExportPanelProps) {
+export function ExportPanel({ report, parameters, loading, onExport, onView }: ExportPanelProps) {
   const [parameterValues, setParameterValues] = useState<Record<string, string | string[]>>({});
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('PDF');
 
   const handleExport = () => {
     onExport(selectedFormat, parameterValues);
+  };
+
+  const handleView = () => {
+    onView?.(parameterValues);
   };
 
   return (
@@ -119,24 +124,39 @@ export function ExportPanel({ report, parameters, loading, onExport }: ExportPan
             })}
           </div>
 
-          <Button 
-            onClick={handleExport} 
-            disabled={loading}
-            className="w-full gap-2"
-            size="lg"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Exportando...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4" />
-                Exportar Relatório
-              </>
+          <div className="flex flex-col sm:flex-row gap-2">
+            {onView && (
+              <Button 
+                onClick={handleView}
+                disabled={loading}
+                variant="outline"
+                className="flex-1 gap-2"
+                size="lg"
+              >
+                <Eye className="h-4 w-4" />
+                <span className="hidden sm:inline">Visualizar</span>
+              </Button>
             )}
-          </Button>
+            
+            <Button 
+              onClick={handleExport} 
+              disabled={loading}
+              className="flex-1 gap-2"
+              size="lg"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="hidden sm:inline">Exportando...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Exportar</span>
+                </>
+              )}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
