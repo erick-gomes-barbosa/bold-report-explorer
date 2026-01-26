@@ -12,6 +12,40 @@ interface ExportPanelProps {
   onExport: (format: ExportFormat, params: Record<string, string | string[]>) => void;
 }
 
+// Format-specific colors that blend with the earthy palette
+const formatColors: Record<ExportFormat, { bg: string; text: string; border: string }> = {
+  PDF: { 
+    bg: 'bg-red-50 dark:bg-red-950/30', 
+    text: 'text-red-600 dark:text-red-400', 
+    border: 'border-red-200 dark:border-red-800' 
+  },
+  Excel: { 
+    bg: 'bg-emerald-50 dark:bg-emerald-950/30', 
+    text: 'text-emerald-600 dark:text-emerald-400', 
+    border: 'border-emerald-200 dark:border-emerald-800' 
+  },
+  Word: { 
+    bg: 'bg-blue-50 dark:bg-blue-950/30', 
+    text: 'text-blue-600 dark:text-blue-400', 
+    border: 'border-blue-200 dark:border-blue-800' 
+  },
+  CSV: { 
+    bg: 'bg-amber-50 dark:bg-amber-950/30', 
+    text: 'text-amber-600 dark:text-amber-400', 
+    border: 'border-amber-200 dark:border-amber-800' 
+  },
+  HTML: { 
+    bg: 'bg-orange-50 dark:bg-orange-950/30', 
+    text: 'text-orange-600 dark:text-orange-400', 
+    border: 'border-orange-200 dark:border-orange-800' 
+  },
+  PPT: { 
+    bg: 'bg-rose-50 dark:bg-rose-950/30', 
+    text: 'text-rose-600 dark:text-rose-400', 
+    border: 'border-rose-200 dark:border-rose-800' 
+  },
+};
+
 const exportFormats: { format: ExportFormat; label: string; icon: React.ReactNode }[] = [
   { format: 'PDF', label: 'PDF', icon: <FileText className="h-4 w-4" /> },
   { format: 'Excel', label: 'Excel', icon: <FileSpreadsheet className="h-4 w-4" /> },
@@ -61,19 +95,28 @@ export function ExportPanel({ report, parameters, loading, onExport }: ExportPan
           <CardTitle className="text-base font-medium">Formato de Exportação</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {exportFormats.map(({ format, label, icon }) => (
-              <Button
-                key={format}
-                variant={selectedFormat === format ? 'default' : 'outline'}
-                size="sm"
-                className="justify-start gap-2"
-                onClick={() => setSelectedFormat(format)}
-              >
-                {icon}
-                {label}
-              </Button>
-            ))}
+          <div className="grid grid-cols-4 gap-2">
+            {exportFormats.map(({ format, label, icon }) => {
+              const colors = formatColors[format];
+              const isSelected = selectedFormat === format;
+              
+              return (
+                <Button
+                  key={format}
+                  variant="outline"
+                  size="sm"
+                  className={`justify-center gap-1.5 transition-all ${
+                    isSelected 
+                      ? `${colors.bg} ${colors.text} ${colors.border} ring-2 ring-offset-1 ring-current` 
+                      : `hover:${colors.bg} hover:${colors.text} hover:${colors.border}`
+                  }`}
+                  onClick={() => setSelectedFormat(format)}
+                >
+                  <span className={isSelected ? colors.text : colors.text}>{icon}</span>
+                  <span className="hidden sm:inline">{label}</span>
+                </Button>
+              );
+            })}
           </div>
 
           <Button 
