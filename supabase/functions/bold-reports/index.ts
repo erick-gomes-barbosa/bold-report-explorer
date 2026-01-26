@@ -116,6 +116,17 @@ serve(async (req) => {
     let response;
 
     switch (action) {
+      case 'get-viewer-config':
+        // Return the site ID and token for the embedded viewer
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            siteId: BOLD_SITE_ID,
+            token: accessToken
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+
       case 'list-reports':
         const listUrl = `${BASE_URL}/v1.0/items?itemType=Report`;
         console.log('Fetching reports from:', listUrl);
