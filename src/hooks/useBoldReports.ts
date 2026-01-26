@@ -76,25 +76,51 @@ export function useBoldReports() {
       if (fnError) throw fnError;
       
       if (data?.success && data?.data) {
-        // Decode base64 and download
-        const byteCharacters = atob(data.data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        // Decode base64 properly
+        // Remove any whitespace that might have been added
+        const cleanBase64 = data.data.replace(/\s+/g, '');
+        
+        try {
+          // Decode base64 to binary string
+          const byteCharacters = atob(cleanBase64);
+          
+          // Convert binary string to byte array
+          const byteArray = new Uint8Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteArray[i] = byteCharacters.charCodeAt(i);
+          }
+          
+          // Create blob with correct MIME type
+          const mimeType = data.contentType || 'application/octet-stream';
+          const blob = new Blob([byteArray], { type: mimeType });
+          
+          // Verify blob is not empty
+          if (blob.size === 0) {
+            throw new Error('Arquivo exportado está vazio');
+          }
+          
+          console.log('Download iniciado:', {
+            filename: data.filename,
+            size: blob.size,
+            type: mimeType
+          });
+          
+          // Create download link and trigger
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = data.filename || `report.${format.toLowerCase()}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          // Cleanup
+          setTimeout(() => window.URL.revokeObjectURL(url), 100);
+          
+          return true;
+        } catch (decodeError) {
+          throw new Error(`Erro ao decodificar arquivo: ${decodeError instanceof Error ? decodeError.message : 'desconhecido'}`);
         }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: data.contentType });
-        
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = data.filename || `report.${format.toLowerCase()}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        
-        return true;
       } else if (data?.data?.Message) {
         throw new Error(data.data.Message);
       }

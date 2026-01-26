@@ -211,9 +211,16 @@ serve(async (req) => {
         console.log('Export response status:', response.status);
 
         if (response.ok) {
-          const blob = await response.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+          // Get the response as ArrayBuffer
+          const arrayBuffer = await response.arrayBuffer();
+          
+          // Convert ArrayBuffer to base64 using proper Deno method
+          const uint8Array = new Uint8Array(arrayBuffer);
+          let binaryString = '';
+          for (let i = 0; i < uint8Array.byteLength; i++) {
+            binaryString += String.fromCharCode(uint8Array[i]);
+          }
+          const base64 = btoa(binaryString);
           
           // Get correct extension and MIME type from mapping
           const formatInfo = FORMAT_MAPPING[exportFormat] || { 
@@ -221,12 +228,20 @@ serve(async (req) => {
             mimeType: 'application/octet-stream' 
           };
           
+          console.log('Export successful:', {
+            format: exportFormat,
+            size: arrayBuffer.byteLength,
+            contentType: formatInfo.mimeType,
+            filename: `report.${formatInfo.extension}`
+          });
+          
           return new Response(
             JSON.stringify({ 
               success: true, 
               data: base64,
               contentType: formatInfo.mimeType,
-              filename: `report.${formatInfo.extension}`
+              filename: `report.${formatInfo.extension}`,
+              size: arrayBuffer.byteLength
             }),
             { 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
