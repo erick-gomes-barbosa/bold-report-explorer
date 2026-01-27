@@ -183,7 +183,6 @@ serve(async (req) => {
           JSON.stringify({ success: true, data: foundParams || [], status: 200 }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-        break;
 
       case 'export-report':
         // API Cloud v5.0 endpoint: POST /v5.0/reports/export
@@ -280,7 +279,10 @@ serve(async (req) => {
           });
           throw new Error(`Export failed: ${response.status} - ${errorText.substring(0, 200)}`);
         }
-        break;
+        return new Response(
+          JSON.stringify({ error: 'Unexpected state after export' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
 
       default:
         return new Response(

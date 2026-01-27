@@ -68,6 +68,7 @@ export function ParameterForm({ parameters, values, onChange }: ParameterFormPro
     if (Object.keys(defaults).length > 0) {
       onChange({ ...defaults, ...values });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parameters]);
 
   if (visibleParams.length === 0) {
