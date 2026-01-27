@@ -24,21 +24,21 @@ export function ReportViewer({
 
   // Build the Bold Reports Cloud viewer URL
   const viewerUrl = useMemo(() => {
-    // Bold Reports Cloud embedded viewer URL format
-    const baseUrl = `https://cloud.boldreports.com/reporting/reportviewer/site/${siteId}`;
+    // Bold Reports Cloud direct report view URL with embed mode
+    // Format: https://cloud.boldreports.com/reporting/en-us/site/{siteId}/reports/{reportId}/view?isembed=true
+    const baseUrl = `https://cloud.boldreports.com/reporting/en-us/site/${siteId}/reports/${report.Id}/view`;
     
     const params = new URLSearchParams();
-    params.set('reportId', report.Id);
+    params.set('isembed', 'true');
     
-    // Add parameters if any
+    // Add report parameters directly to URL
     if (Object.keys(parameterValues).length > 0) {
-      const paramString = Object.entries(parameterValues)
-        .map(([key, value]) => {
-          const val = Array.isArray(value) ? value.join(',') : value;
-          return `${encodeURIComponent(key)}=${encodeURIComponent(val)}`;
-        })
-        .join('&');
-      params.set('parameters', paramString);
+      Object.entries(parameterValues).forEach(([key, value]) => {
+        const val = Array.isArray(value) ? value.join(',') : value;
+        if (val) {
+          params.set(key, val);
+        }
+      });
     }
 
     return `${baseUrl}?${params.toString()}`;
