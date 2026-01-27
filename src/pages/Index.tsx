@@ -182,6 +182,7 @@ const Index = () => {
           report={selectedReport}
           parameterValues={viewerParams}
           siteId={viewerConfig.siteId}
+          token={viewerConfig.token}
           isOpen={viewerOpen}
           onClose={() => setViewerOpen(false)}
         />
