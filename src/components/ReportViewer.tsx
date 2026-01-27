@@ -2,24 +2,20 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Maximize2, Minimize2, Loader2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { BoldReport, ReportParameter } from '@/types/boldReports';
+import type { BoldReport } from '@/types/boldReports';
 
 interface ReportViewerProps {
   report: BoldReport;
-  parameters: ReportParameter[];
   parameterValues: Record<string, string | string[]>;
   siteId: string;
-  token: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
 export function ReportViewer({
   report,
-  parameters,
   parameterValues,
   siteId,
-  token,
   isOpen,
   onClose,
 }: ReportViewerProps) {

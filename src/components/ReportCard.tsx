@@ -22,7 +22,7 @@ export function ReportCard({ report, isSelected, onClick }: ReportCardProps) {
     <Card 
       className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
         isSelected 
-          ? 'ring-2 ring-primary bg-blue-light/30' 
+          ? 'ring-2 ring-primary bg-primary/10' 
           : 'hover:bg-accent/50'
       }`}
       onClick={onClick}

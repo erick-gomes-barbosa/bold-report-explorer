@@ -180,10 +180,8 @@ const Index = () => {
       {selectedReport && viewerConfig && (
         <ReportViewer
           report={selectedReport}
-          parameters={parameters}
           parameterValues={viewerParams}
           siteId={viewerConfig.siteId}
-          token={viewerConfig.token}
           isOpen={viewerOpen}
           onClose={() => setViewerOpen(false)}
         />
