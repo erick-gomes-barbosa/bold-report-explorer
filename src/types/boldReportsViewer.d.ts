@@ -22,13 +22,15 @@ export interface BoldReportViewerInstance {
   off: (event: string) => void;
 }
 
-// Interface para o callback ajaxBeforeLoad
+// Interface para o callback ajaxBeforeLoad (documentação oficial)
+// https://help.boldreports.com/embedded-reporting/javascript-reporting/report-viewer/api-reference/events/#ajaxbeforeload
 export interface AjaxBeforeLoadEventArgs {
-  url: string;
-  method?: string;
-  headers: Record<string, string>;
-  data?: unknown;
-  cancel?: boolean;
+  reportViewerToken?: string;
+  serviceAuthorizationToken?: string;
+  headerReq?: Record<string, string>;
+  headers?: Record<string, string>;
+  data?: string;
+  actionName?: string;
 }
 
 declare global {

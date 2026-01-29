@@ -88,13 +88,16 @@ export function ReportViewer({
   }, [isOpen, token, siteId, report, reportPath, convertParameters]);
 
   // Callback para interceptar requisições AJAX do viewer
+  // Documentação: https://help.boldreports.com/embedded-reporting/javascript-reporting/report-viewer/api-reference/events/#ajaxbeforeload
   const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
     console.group('[BoldReports AJAX] Requisição');
-    console.log('[BoldReports AJAX] URL:', args.url);
-    console.log('[BoldReports AJAX] Method:', args.method || 'GET');
+    console.log('[BoldReports AJAX] Action Name:', args.actionName);
+    console.log('[BoldReports AJAX] Service Auth Token:', args.serviceAuthorizationToken ? args.serviceAuthorizationToken.substring(0, 50) + '...' : 'N/A');
+    console.log('[BoldReports AJAX] Report Viewer Token:', args.reportViewerToken ? args.reportViewerToken.substring(0, 50) + '...' : 'N/A');
     console.log('[BoldReports AJAX] Headers:', args.headers);
+    console.log('[BoldReports AJAX] Header Req:', args.headerReq);
     if (args.data) {
-      console.log('[BoldReports AJAX] Data:', typeof args.data === 'string' ? args.data.substring(0, 200) : args.data);
+      console.log('[BoldReports AJAX] Data:', args.data.substring(0, 300));
     }
     console.groupEnd();
   }, []);
