@@ -1,112 +1,162 @@
 
 
-## Plano de Correção: Problema de POST na Pré-visualização do Bold Reports
+## Plano de Correcao: Problema 401 com Logs de Diagnostico Granular
 
 ### Resumo do Problema
 
-Quando o usuário abre a pré-visualização de um relatório, o Bold Reports React Viewer está falhando ao fazer requisições POST para a API. Após análise da documentação oficial e do código atual, foram identificados problemas de configuração no componente `ReportViewer.tsx`.
+O Bold Reports Viewer esta retornando erro 401 (Unauthorized) ao tentar carregar relatorios. A analise revelou que ha uma **incompatibilidade entre a URL do servidor e o token JWT**:
 
-### Causa Raiz Identificada
+| Elemento | Valor |
+|----------|-------|
+| Token `iss` (issuer) | `https://cloud.boldreports.com/reporting/site/b2044034` |
+| Token `aud` (audience) | `https://cloud.boldreports.com/reporting/site/b2044034` |
+| URL atual sendo usada | `https://b2044034.boldreports.com/reporting/api/` |
 
-O componente está configurado incorretamente para se comunicar com o Bold Reports Cloud. A documentação oficial especifica configurações diferentes das que estão implementadas:
+O token foi emitido para `cloud.boldreports.com/reporting/site/{siteId}`, mas as requisicoes estao indo para `{siteId}.boldreports.com` - dominios completamente diferentes.
 
-| Propriedade | Valor Atual (INCORRETO) | Valor Correto |
-|-------------|------------------------|---------------|
-| `reportServiceUrl` | `https://cloud.boldreports.com/reporting/api/site/${siteId}/v1.0/reports` | `https://service.boldreports.com/api/Viewer` |
-| `reportPath` | `/${siteId}/reports/${report.Id}` | `/${CategoryName}/${ReportName}` |
-| `reportServerUrl` | Nao configurado | `https://cloud.boldreports.com/reporting/api/site/${siteId}` |
-| Autenticacao | `ajaxBeforeLoad` hook | `serviceAuthorizationToken` = `bearer ${token}` |
+---
 
-### Solucao Proposta
+### Solucao
 
-#### Arquivo: `src/components/ReportViewer.tsx`
+#### Fase 1: Corrigir a URL do Servidor
 
-**Alteracao 1**: Corrigir a URL do servico de relatórios
+Alterar `getBoldReportsServerUrl` para usar o formato que corresponde ao issuer/audience do token:
 
 ```typescript
-// ANTES (INCORRETO)
-const getBoldReportsServiceUrl = (siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/site/${siteId}/v1.0/reports`;
+// ANTES (formato subdominio - INCORRETO para este token)
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://${siteId}.boldreports.com/reporting/api/`;
 
-// DEPOIS (CORRETO)
-const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
+// DEPOIS (formato Cloud padrao - corresponde ao token)
 const getBoldReportsServerUrl = (siteId: string) => 
   `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
 ```
 
-**Alteracao 2**: Corrigir o formato do `reportPath`
+#### Fase 2: Adicionar Logs de Diagnostico Granular
+
+Adicionar logs detalhados em cada etapa do processo para facilitar depuracao futura:
+
+**Arquivo: `src/components/ReportViewer.tsx`**
 
 ```typescript
-// ANTES (INCORRETO)
-const reportPath = `/${siteId}/reports/${report.Id}`;
-
-// DEPOIS (CORRETO)
-// Formato: /{CategoryName}/{ReportName}
-const reportPath = `/${report.CategoryName || 'Reports'}/${report.Name}`;
+// Logs no momento da inicializacao
+console.group('[BoldReports] Inicializando Viewer');
+console.log('[BoldReports] Report:', {
+  id: report.Id,
+  name: report.Name,
+  category: report.CategoryName
+});
+console.log('[BoldReports] SiteId:', siteId);
+console.log('[BoldReports] Token (primeiros 50 chars):', token.substring(0, 50) + '...');
+console.log('[BoldReports] Report Service URL:', BOLD_REPORTS_SERVICE_URL);
+console.log('[BoldReports] Report Server URL:', getBoldReportsServerUrl(siteId));
+console.log('[BoldReports] Report Path:', reportPath);
+console.log('[BoldReports] Service Auth Token:', `bearer ${token.substring(0, 20)}...`);
+console.log('[BoldReports] Parameters:', convertParameters());
+console.groupEnd();
 ```
 
-**Alteracao 3**: Adicionar `reportServerUrl` e usar `serviceAuthorizationToken`
+**Arquivo: `src/hooks/useReportViewer.ts`**
 
 ```typescript
-// No BoldReportViewerComponent
-<BoldReportViewerComponent
-  id={viewerContainerId}
-  reportServiceUrl={BOLD_REPORTS_SERVICE_URL}
-  reportServerUrl={getBoldReportsServerUrl(siteId)}
-  serviceAuthorizationToken={`bearer ${token}`}
-  reportPath={reportPath}
-  // ... outras props
-/>
+// Logs na busca da configuracao
+console.group('[BoldReports] Buscando configuracao do viewer');
+console.log('[BoldReports] Chamando edge function: get-viewer-config');
+// ... apos resposta
+console.log('[BoldReports] Resposta recebida:', {
+  success: data?.success,
+  siteId: data?.siteId,
+  tokenLength: data?.token?.length,
+  tokenPreview: data?.token?.substring(0, 50) + '...'
+});
+console.groupEnd();
 ```
 
-**Alteracao 4**: Remover o hook `ajaxBeforeLoad` (não é mais necessário)
+**Arquivo: `supabase/functions/bold-reports/index.ts`**
 
-O `serviceAuthorizationToken` substitui a necessidade de injetar headers manualmente.
+```typescript
+// Logs detalhados de autenticacao
+console.log('[BoldReports Edge] Gerando/validando token...');
+console.log('[BoldReports Edge] Token source:', BOLD_TOKEN ? 'BOLD_TOKEN' : 'password_grant');
+console.log('[BoldReports Edge] Token expiry (cached):', cachedToken?.expiresAt);
+```
+
+#### Fase 3: Adicionar Callback de Evento AJAX
+
+Usar o callback `ajaxBeforeLoad` para logar TODAS as requisicoes HTTP do viewer:
+
+```typescript
+ajaxBeforeLoad={(args: AjaxBeforeLoadEventArgs) => {
+  console.group('[BoldReports AJAX] Requisicao');
+  console.log('[BoldReports AJAX] URL:', args.url);
+  console.log('[BoldReports AJAX] Method:', args.method || 'GET');
+  console.log('[BoldReports AJAX] Headers:', args.headers);
+  console.log('[BoldReports AJAX] Data:', args.data);
+  console.groupEnd();
+}}
+```
 
 ---
 
-### Atualizacao de Tipos
+### Arquivos a Modificar
 
-#### Arquivo: `src/types/boldReportsViewer.d.ts`
+1. **`src/components/ReportViewer.tsx`**
+   - Corrigir `getBoldReportsServerUrl` para formato Cloud
+   - Adicionar logs de inicializacao
+   - Adicionar callback `ajaxBeforeLoad` para interceptar requisicoes
+   - Melhorar logs nos handlers `handleReportLoaded` e `handleReportError`
 
-Adicionar a propriedade `serviceAuthorizationToken` à interface:
+2. **`src/hooks/useReportViewer.ts`**
+   - Adicionar logs na funcao `fetchViewerConfig`
 
-```typescript
-interface BoldReportViewerProps {
-  // ... props existentes
-  reportServerUrl?: string;
-  serviceAuthorizationToken?: string;
-}
-```
+3. **`supabase/functions/bold-reports/index.ts`**
+   - Adicionar logs mais detalhados no processo de autenticacao
 
-#### Arquivo: `src/globals.ts`
-
-Adicionar a mesma propriedade à interface `BoldReportViewerProps`.
+4. **`src/types/boldReportsViewer.d.ts`**
+   - Adicionar tipo `AjaxBeforeLoadEventArgs` para o callback
 
 ---
 
 ### Detalhes Tecnicos
 
-**Arquivo principal a modificar**: `src/components/ReportViewer.tsx`
+**Estrutura dos Logs**
 
-**Arquivos de tipos a atualizar**:
-- `src/types/boldReportsViewer.d.ts`
-- `src/globals.ts`
+Todos os logs seguirao o padrao:
+- `[BoldReports]` - Logs do componente React
+- `[BoldReports AJAX]` - Logs de requisicoes HTTP do viewer
+- `[BoldReports Edge]` - Logs da edge function
 
-**Propriedades do componente após correção**:
-- `reportServiceUrl`: URL fixa do serviço de viewer do Cloud
-- `reportServerUrl`: URL do servidor do site específico
-- `serviceAuthorizationToken`: Token de autenticação no formato "bearer {token}"
-- `reportPath`: Caminho no formato /{Categoria}/{NomeRelatorio}
+Uso de `console.group()` e `console.groupEnd()` para agrupar logs relacionados.
+
+**Callback ajaxBeforeLoad**
+
+Interface esperada:
+```typescript
+interface AjaxBeforeLoadEventArgs {
+  url: string;
+  method?: string;
+  headers: Record<string, string>;
+  data?: unknown;
+  cancel?: boolean;
+}
+```
+
+Este callback permite:
+1. Ver a URL exata sendo chamada
+2. Verificar se os headers de autenticacao estao corretos
+3. Potencialmente modificar a requisicao antes do envio
 
 ---
 
-### Verificação Pos-Implementacao
+### Verificacao Pos-Implementacao
 
-1. Abrir um relatório no visualizador
-2. Verificar no console se não há erros de requisição
-3. Confirmar que o relatório carrega e exibe corretamente
-4. Testar exportação em PDF para validar que o viewer está funcional
+1. Abrir o console do navegador (F12)
+2. Abrir um relatorio no visualizador
+3. Verificar os logs agrupados:
+   - `[BoldReports] Inicializando Viewer` - configuracao inicial
+   - `[BoldReports AJAX] Requisicao` - cada requisicao HTTP
+   - Verificar se URLs correspondem ao formato esperado
+4. Se ainda houver erro 401, os logs mostrarao exatamente qual URL e headers estao sendo usados
 
 ---
 
@@ -114,7 +164,7 @@ Adicionar a mesma propriedade à interface `BoldReportViewerProps`.
 
 | Risco | Probabilidade | Mitigacao |
 |-------|--------------|-----------|
-| CategoryName pode ser undefined | Media | Usar fallback para string vazia ou "Reports" |
-| Nome do relatório com caracteres especiais | Baixa | O Bold Reports deve lidar internamente com encoding |
-| Token expirado | Media | O token já é renovado pela edge function |
+| Logs excessivos em producao | Media | Usar variavel de ambiente para controlar nivel de log |
+| URL Cloud nao funcionar | Baixa | O token indica que Cloud e o formato correto |
+| Exposicao de token no console | Media | Mostrar apenas preview do token (primeiros 20-50 chars) |
 
