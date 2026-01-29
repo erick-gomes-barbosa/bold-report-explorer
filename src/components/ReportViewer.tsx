@@ -87,29 +87,42 @@ export function ReportViewer({
     }
   }, [isOpen, token, siteId, report, reportPath, convertParameters]);
 
-  // Callback para interceptar requisições AJAX do viewer
-  // FASE 1: Logging granular - inspecionar estrutura real do objeto args
+  // Callback para interceptar requisições AJAX do viewer e injetar token de autenticação
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAjaxBeforeLoad = useCallback((args: any) => {
     console.group('[BoldReports AJAX] Requisição');
-    console.log('[BoldReports AJAX] Args completo:', args);
-    console.log('[BoldReports AJAX] Tipo:', typeof args);
+    console.log('[BoldReports AJAX] Action:', args?.actionName || 'N/A');
     
-    // Se for objeto, logar todas as chaves para descobrir estrutura real
-    if (args && typeof args === 'object') {
-      console.log('[BoldReports AJAX] Chaves disponíveis:', Object.keys(args));
+    // Injeta o token de autorização nos headers da requisição
+    if (token && args) {
+      const bearerToken = `Bearer ${token}`;
       
-      // Logar cada propriedade individualmente
-      for (const [key, value] of Object.entries(args)) {
-        if (typeof value === 'string' && value.length > 100) {
-          console.log(`[BoldReports AJAX] ${key}:`, value.substring(0, 100) + '...');
-        } else {
-          console.log(`[BoldReports AJAX] ${key}:`, value);
-        }
+      // Verifica se args.headers existe e é um array
+      if (Array.isArray(args.headers)) {
+        // Adiciona o header Authorization
+        args.headers.push({ Key: 'Authorization', Value: bearerToken });
+        console.log('[BoldReports AJAX] ✅ Token injetado via headers array');
+      } else if (args.headers && typeof args.headers === 'object') {
+        // Se headers for um objeto, adiciona diretamente
+        args.headers['Authorization'] = bearerToken;
+        console.log('[BoldReports AJAX] ✅ Token injetado via headers object');
+      } else {
+        // Cria o array de headers se não existir
+        args.headers = [{ Key: 'Authorization', Value: bearerToken }];
+        console.log('[BoldReports AJAX] ✅ Token injetado (headers criado)');
       }
+      
+      // Também tenta definir serviceAuthorizationToken se existir
+      if ('serviceAuthorizationToken' in args) {
+        args.serviceAuthorizationToken = bearerToken;
+        console.log('[BoldReports AJAX] ✅ serviceAuthorizationToken atualizado');
+      }
+    } else {
+      console.warn('[BoldReports AJAX] ⚠️ Token não disponível para injeção');
     }
+    
     console.groupEnd();
-  }, []);
+  }, [token]);
 
   // FASE 3: Callback para capturar respostas de sucesso
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
