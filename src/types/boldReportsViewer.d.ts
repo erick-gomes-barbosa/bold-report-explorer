@@ -68,6 +68,9 @@ declare global {
       exportItemClick?: (args: { exportType: string }) => void;
       exportProgressChanged?: (args: { progress: number }) => void;
       ajaxBeforeLoad?: (args: AjaxBeforeLoadEventArgs) => void;
+      // FASE 3: Novos eventos para diagnóstico
+      ajaxSuccess?: (args: unknown) => void;
+      ajaxError?: (args: unknown) => void;
     }>;
   }
 }
