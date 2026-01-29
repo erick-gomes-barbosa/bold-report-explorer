@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Maximize2, Minimize2, Loader2, Download } from 'lucide-react';
+import { Maximize2, Minimize2, Loader2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -279,15 +279,6 @@ export function ReportViewer({
               ) : (
                 <Maximize2 className="h-4 w-4" />
               )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onClose}
-              title="Fechar"
-            >
-              <X className="h-4 w-4" />
             </Button>
           </div>
         </DialogHeader>
