@@ -22,6 +22,15 @@ export interface BoldReportViewerInstance {
   off: (event: string) => void;
 }
 
+// Interface para o callback ajaxBeforeLoad
+export interface AjaxBeforeLoadEventArgs {
+  url: string;
+  method?: string;
+  headers: Record<string, string>;
+  data?: unknown;
+  cancel?: boolean;
+}
+
 declare global {
   interface Window {
     BoldReportViewerComponent: React.ComponentType<{
@@ -56,7 +65,7 @@ declare global {
       reportError?: (args: { errorCode: string; message: string }) => void;
       exportItemClick?: (args: { exportType: string }) => void;
       exportProgressChanged?: (args: { progress: number }) => void;
-      ajaxBeforeLoad?: (args: { headers: Record<string, string> }) => void;
+      ajaxBeforeLoad?: (args: AjaxBeforeLoadEventArgs) => void;
     }>;
   }
 }
