@@ -3,6 +3,15 @@ import React from 'react';
 import createReactClass from 'create-react-class';
 import ReactDOM from 'react-dom';
 
+// Polyfill para jQuery.isWindow (removido no jQuery 4.x, mas necessário pelo Bold Reports)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+if (typeof (jquery as any).isWindow !== 'function') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (jquery as any).isWindow = function(obj: unknown) {
+    return obj != null && obj === (obj as Window).window;
+  };
+}
+
 // Expõe as dependências no escopo global (window) para os scripts base do Bold Reports
 declare global {
   interface Window {
