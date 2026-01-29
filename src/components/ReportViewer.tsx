@@ -88,16 +88,50 @@ export function ReportViewer({
   }, [isOpen, token, siteId, report, reportPath, convertParameters]);
 
   // Callback para interceptar requisições AJAX do viewer
-  // Documentação: https://help.boldreports.com/embedded-reporting/javascript-reporting/report-viewer/api-reference/events/#ajaxbeforeload
-  const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
+  // FASE 1: Logging granular - inspecionar estrutura real do objeto args
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleAjaxBeforeLoad = useCallback((args: any) => {
     console.group('[BoldReports AJAX] Requisição');
-    console.log('[BoldReports AJAX] Action Name:', args.actionName);
-    console.log('[BoldReports AJAX] Service Auth Token:', args.serviceAuthorizationToken ? args.serviceAuthorizationToken.substring(0, 50) + '...' : 'N/A');
-    console.log('[BoldReports AJAX] Report Viewer Token:', args.reportViewerToken ? args.reportViewerToken.substring(0, 50) + '...' : 'N/A');
-    console.log('[BoldReports AJAX] Headers:', args.headers);
-    console.log('[BoldReports AJAX] Header Req:', args.headerReq);
-    if (args.data) {
-      console.log('[BoldReports AJAX] Data:', args.data.substring(0, 300));
+    console.log('[BoldReports AJAX] Args completo:', args);
+    console.log('[BoldReports AJAX] Tipo:', typeof args);
+    
+    // Se for objeto, logar todas as chaves para descobrir estrutura real
+    if (args && typeof args === 'object') {
+      console.log('[BoldReports AJAX] Chaves disponíveis:', Object.keys(args));
+      
+      // Logar cada propriedade individualmente
+      for (const [key, value] of Object.entries(args)) {
+        if (typeof value === 'string' && value.length > 100) {
+          console.log(`[BoldReports AJAX] ${key}:`, value.substring(0, 100) + '...');
+        } else {
+          console.log(`[BoldReports AJAX] ${key}:`, value);
+        }
+      }
+    }
+    console.groupEnd();
+  }, []);
+
+  // FASE 3: Callback para capturar respostas de sucesso
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleAjaxSuccess = useCallback((args: any) => {
+    console.group('[BoldReports AJAX] ✅ Sucesso');
+    console.log('[BoldReports AJAX] Response completo:', args);
+    if (args && typeof args === 'object') {
+      console.log('[BoldReports AJAX] Response chaves:', Object.keys(args));
+    }
+    console.groupEnd();
+  }, []);
+
+  // FASE 3: Callback para capturar erros AJAX
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleAjaxError = useCallback((args: any) => {
+    console.group('[BoldReports AJAX] ❌ Erro');
+    console.log('[BoldReports AJAX] Error completo:', args);
+    if (args && typeof args === 'object') {
+      console.log('[BoldReports AJAX] Error chaves:', Object.keys(args));
+      for (const [key, value] of Object.entries(args)) {
+        console.log(`[BoldReports AJAX] ${key}:`, value);
+      }
     }
     console.groupEnd();
   }, []);
@@ -284,6 +318,8 @@ export function ReportViewer({
                 reportLoaded={handleReportLoaded}
                 reportError={handleReportError}
                 ajaxBeforeLoad={handleAjaxBeforeLoad}
+                ajaxSuccess={handleAjaxSuccess}
+                ajaxError={handleAjaxError}
               />
             </div>
           )}
