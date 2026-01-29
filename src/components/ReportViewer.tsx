@@ -17,6 +17,7 @@ interface ReportViewerProps {
   parameterValues: Record<string, string | string[]>;
   siteId: string;
   token: string;
+  reportServerUrl?: string;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -24,11 +25,10 @@ interface ReportViewerProps {
 // URLs do Bold Reports Cloud
 const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
 
-// CORRIGIDO: Formato Cloud padrão que corresponde ao issuer/audience do token JWT
-// Token iss/aud: https://cloud.boldreports.com/reporting/site/{siteId}
-// Antes usava: https://{siteId}.boldreports.com/reporting/api/ (INCORRETO - domínio diferente do token)
-const getBoldReportsServerUrl = (siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
+// CORRIGIDO: Formato Cloud centralizado sem /site/{siteId} no path
+// Baseado na documentação: https://<<tenant>>.boldreports.com/reporting/api/
+// Como usamos cloud.boldreports.com centralizado, removemos /site/{siteId}
+const DEFAULT_REPORT_SERVER_URL = 'https://cloud.boldreports.com/reporting/api/';
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
@@ -45,6 +45,7 @@ export function ReportViewer({
   parameterValues,
   siteId,
   token,
+  reportServerUrl,
   isOpen,
   onClose,
 }: ReportViewerProps) {
@@ -67,6 +68,9 @@ export function ReportViewer({
     }));
   }, [parameterValues]);
 
+  // URL do servidor - usa a prop ou fallback para o padrão
+  const effectiveServerUrl = reportServerUrl || DEFAULT_REPORT_SERVER_URL;
+
   // Log de inicialização quando o viewer é montado
   useEffect(() => {
     if (isOpen && token && siteId) {
@@ -79,44 +83,54 @@ export function ReportViewer({
       console.log('[BoldReports] SiteId:', siteId);
       console.log('[BoldReports] Token (primeiros 50 chars):', token.substring(0, 50) + '...');
       console.log('[BoldReports] Report Service URL:', BOLD_REPORTS_SERVICE_URL);
-      console.log('[BoldReports] Report Server URL:', getBoldReportsServerUrl(siteId));
+      console.log('[BoldReports] Report Server URL:', effectiveServerUrl);
       console.log('[BoldReports] Report Path:', reportPath);
       console.log('[BoldReports] Service Auth Token:', `bearer ${token.substring(0, 20)}...`);
       console.log('[BoldReports] Parameters:', convertParameters());
       console.groupEnd();
     }
-  }, [isOpen, token, siteId, report, reportPath, convertParameters]);
+  }, [isOpen, token, siteId, report, reportPath, convertParameters, effectiveServerUrl]);
 
   // Callback para interceptar requisições AJAX do viewer e injetar token de autenticação
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAjaxBeforeLoad = useCallback((args: any) => {
-    console.group('[BoldReports AJAX] Requisição');
+    console.group('[BoldReports AJAX] Requisição Interceptada');
     console.log('[BoldReports AJAX] Action:', args?.actionName || 'N/A');
+    console.log('[BoldReports AJAX] Args completo:', JSON.stringify(args, null, 2));
     
     // Injeta o token de autorização nos headers da requisição
     if (token && args) {
       const bearerToken = `Bearer ${token}`;
       
-      // Verifica se args.headers existe e é um array
-      if (Array.isArray(args.headers)) {
-        // Adiciona o header Authorization
-        args.headers.push({ Key: 'Authorization', Value: bearerToken });
-        console.log('[BoldReports AJAX] ✅ Token injetado via headers array');
-      } else if (args.headers && typeof args.headers === 'object') {
-        // Se headers for um objeto, adiciona diretamente
-        args.headers['Authorization'] = bearerToken;
-        console.log('[BoldReports AJAX] ✅ Token injetado via headers object');
-      } else {
-        // Cria o array de headers se não existir
-        args.headers = [{ Key: 'Authorization', Value: bearerToken }];
-        console.log('[BoldReports AJAX] ✅ Token injetado (headers criado)');
+      // Inicializa headers se não existir
+      if (!args.headers) {
+        args.headers = [];
       }
       
-      // Também tenta definir serviceAuthorizationToken se existir
+      // Formato array: remove duplicatas e adiciona novo header
+      if (Array.isArray(args.headers)) {
+        // Remove header Authorization existente para evitar duplicatas
+        args.headers = args.headers.filter(
+          (h: any) => h?.Key?.toLowerCase() !== 'authorization'
+        );
+        // Adiciona novo header no formato { Key, Value }
+        args.headers.push({ Key: 'Authorization', Value: bearerToken });
+        console.log('[BoldReports AJAX] ✅ Token injetado via headers array');
+      }
+      
+      // Formato headerReq (se existir como objeto)
+      if (args.headerReq && typeof args.headerReq === 'object') {
+        args.headerReq['Authorization'] = bearerToken;
+        console.log('[BoldReports AJAX] ✅ Token injetado via headerReq');
+      }
+      
+      // Atualiza serviceAuthorizationToken se disponível
       if ('serviceAuthorizationToken' in args) {
         args.serviceAuthorizationToken = bearerToken;
         console.log('[BoldReports AJAX] ✅ serviceAuthorizationToken atualizado');
       }
+      
+      console.log('[BoldReports AJAX] Token injetado com sucesso');
     } else {
       console.warn('[BoldReports AJAX] ⚠️ Token não disponível para injeção');
     }
@@ -299,7 +313,7 @@ export function ReportViewer({
               <BoldReportViewerComponent
                 id={viewerContainerId}
                 reportServiceUrl={BOLD_REPORTS_SERVICE_URL}
-                reportServerUrl={getBoldReportsServerUrl(siteId)}
+                reportServerUrl={effectiveServerUrl}
                 serviceAuthorizationToken={`bearer ${token}`}
                 reportPath={reportPath}
                 parameters={convertParameters()}
