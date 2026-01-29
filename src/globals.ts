@@ -84,6 +84,8 @@ declare global {
 export interface BoldReportViewerProps {
   id: string;
   reportServiceUrl: string;
+  reportServerUrl?: string;
+  serviceAuthorizationToken?: string;
   reportPath?: string;
   parameters?: Array<{
     name: string;

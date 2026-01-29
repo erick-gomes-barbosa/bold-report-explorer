@@ -27,6 +27,8 @@ declare global {
     BoldReportViewerComponent: React.ComponentType<{
       id: string;
       reportServiceUrl: string;
+      reportServerUrl?: string;
+      serviceAuthorizationToken?: string;
       reportPath?: string;
       parameters?: BoldReportParameter[];
       locale?: string;

@@ -21,9 +21,10 @@ interface ReportViewerProps {
   onClose: () => void;
 }
 
-// URL do serviço de API do Bold Reports Cloud
-const getBoldReportsServiceUrl = (siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/site/${siteId}/v1.0/reports`;
+// URLs do Bold Reports Cloud
+const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
@@ -73,12 +74,6 @@ export function ReportViewer({
     toast.error(`Erro ao carregar relatório: ${args.message}`);
   }, []);
 
-  // Adiciona token de autorização aos requests
-  const handleAjaxBeforeLoad = useCallback((args: { headers: Record<string, string> }) => {
-    if (token) {
-      args.headers['Authorization'] = `Bearer ${token}`;
-    }
-  }, [token]);
 
   // Exporta o relatório programaticamente
   const handleExport = useCallback((format: ExportFormat) => {
@@ -129,8 +124,8 @@ export function ReportViewer({
     setIsFullscreen(!isFullscreen);
   };
 
-  // Caminho do relatório no Bold Reports Cloud
-  const reportPath = `/${siteId}/reports/${report.Id}`;
+  // Caminho do relatório no formato /{CategoryName}/{ReportName}
+  const reportPath = `/${report.CategoryName || 'Reports'}/${report.Name}`;
 
   // Verifica se o componente Bold Reports está disponível
   const BoldReportViewerComponent = window.BoldReportViewerComponent;
@@ -221,7 +216,9 @@ export function ReportViewer({
             <div style={{ height: '100%', width: '100%' }}>
               <BoldReportViewerComponent
                 id={viewerContainerId}
-                reportServiceUrl={getBoldReportsServiceUrl(siteId)}
+                reportServiceUrl={BOLD_REPORTS_SERVICE_URL}
+                reportServerUrl={getBoldReportsServerUrl(siteId)}
+                serviceAuthorizationToken={`bearer ${token}`}
                 reportPath={reportPath}
                 parameters={convertParameters()}
                 locale="pt-BR"
@@ -242,7 +239,6 @@ export function ReportViewer({
                 enablePageCache={true}
                 reportLoaded={handleReportLoaded}
                 reportError={handleReportError}
-                ajaxBeforeLoad={handleAjaxBeforeLoad}
               />
             </div>
           )}
