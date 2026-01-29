@@ -23,8 +23,9 @@ interface ReportViewerProps {
 
 // URLs do Bold Reports Cloud
 const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
+// Para Cloud tenants, o formato é: https://{siteId}.boldreports.com/reporting/api/
 const getBoldReportsServerUrl = (siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
+  `https://${siteId}.boldreports.com/reporting/api/`;
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
