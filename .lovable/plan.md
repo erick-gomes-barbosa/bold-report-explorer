@@ -1,106 +1,112 @@
 
 
-## Plano de Correção: Erro de Pré-visualização do Bold Reports
+## Plano de Correção: Problema de POST na Pré-visualização do Bold Reports
 
 ### Resumo do Problema
 
-O Bold Reports React Viewer está falhando durante a inicialização com o erro `jQuery.parseJSON is not a function`. Mesmo com jQuery 3.7.1 instalado (que inclui `parseJSON`), o erro persiste. A análise revelou que os polyfills adicionados em `globals.ts` para `isWindow`, `isFunction`, etc. não incluem `parseJSON`.
+Quando o usuário abre a pré-visualização de um relatório, o Bold Reports React Viewer está falhando ao fazer requisições POST para a API. Após análise da documentação oficial e do código atual, foram identificados problemas de configuração no componente `ReportViewer.tsx`.
 
 ### Causa Raiz Identificada
 
-O Bold Reports internamente usa `jQuery.parseJSON()` para processar respostas AJAX (linha 3286 do `bold.report-viewer.min.js`). Embora o jQuery 3.7.1 inclua este método, os polyfills atuais no `globals.ts` **estão verificando se o método existe E ADICIONANDO-O** condicionalmente. Porém, `$.parseJSON` não foi incluído nessa lista de polyfills.
+O componente está configurado incorretamente para se comunicar com o Bold Reports Cloud. A documentação oficial especifica configurações diferentes das que estão implementadas:
 
-Além disso, o problema pode ser agravado pela ordem de carregamento: o Bold Reports pode estar tentando acessar `jQuery.parseJSON` antes que o polyfill seja aplicado corretamente, ou o bundler do Vite pode estar tree-shaking alguns métodos.
+| Propriedade | Valor Atual (INCORRETO) | Valor Correto |
+|-------------|------------------------|---------------|
+| `reportServiceUrl` | `https://cloud.boldreports.com/reporting/api/site/${siteId}/v1.0/reports` | `https://service.boldreports.com/api/Viewer` |
+| `reportPath` | `/${siteId}/reports/${report.Id}` | `/${CategoryName}/${ReportName}` |
+| `reportServerUrl` | Nao configurado | `https://cloud.boldreports.com/reporting/api/site/${siteId}` |
+| Autenticacao | `ajaxBeforeLoad` hook | `serviceAuthorizationToken` = `bearer ${token}` |
 
-### Solução Proposta
+### Solucao Proposta
 
-#### Fase 1: Adicionar Polyfill para `parseJSON`
+#### Arquivo: `src/components/ReportViewer.tsx`
 
-Atualizar `src/globals.ts` para incluir o polyfill de `jQuery.parseJSON`:
+**Alteracao 1**: Corrigir a URL do servico de relatórios
 
 ```typescript
-// $.parseJSON - depreciado no jQuery 3.0, removido no jQuery 4.0
-// Bold Reports ainda usa este método internamente
-if (typeof jq.parseJSON !== 'function') {
-  jq.parseJSON = JSON.parse;
+// ANTES (INCORRETO)
+const getBoldReportsServiceUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}/v1.0/reports`;
+
+// DEPOIS (CORRETO)
+const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
+```
+
+**Alteracao 2**: Corrigir o formato do `reportPath`
+
+```typescript
+// ANTES (INCORRETO)
+const reportPath = `/${siteId}/reports/${report.Id}`;
+
+// DEPOIS (CORRETO)
+// Formato: /{CategoryName}/{ReportName}
+const reportPath = `/${report.CategoryName || 'Reports'}/${report.Name}`;
+```
+
+**Alteracao 3**: Adicionar `reportServerUrl` e usar `serviceAuthorizationToken`
+
+```typescript
+// No BoldReportViewerComponent
+<BoldReportViewerComponent
+  id={viewerContainerId}
+  reportServiceUrl={BOLD_REPORTS_SERVICE_URL}
+  reportServerUrl={getBoldReportsServerUrl(siteId)}
+  serviceAuthorizationToken={`bearer ${token}`}
+  reportPath={reportPath}
+  // ... outras props
+/>
+```
+
+**Alteracao 4**: Remover o hook `ajaxBeforeLoad` (não é mais necessário)
+
+O `serviceAuthorizationToken` substitui a necessidade de injetar headers manualmente.
+
+---
+
+### Atualizacao de Tipos
+
+#### Arquivo: `src/types/boldReportsViewer.d.ts`
+
+Adicionar a propriedade `serviceAuthorizationToken` à interface:
+
+```typescript
+interface BoldReportViewerProps {
+  // ... props existentes
+  reportServerUrl?: string;
+  serviceAuthorizationToken?: string;
 }
 ```
 
-#### Fase 2: Garantir Ordem de Execução dos Polyfills
+#### Arquivo: `src/globals.ts`
 
-Mover TODOS os polyfills para ANTES da atribuição global do jQuery:
-
-```text
-Ordem correta:
-1. Importar jquery
-2. Aplicar TODOS os polyfills ao objeto jquery
-3. Atribuir ao window.$ e window.jQuery
-4. Carregar scripts Bold Reports (em main.tsx)
-```
-
-#### Fase 3: Verificar se Há Outros Métodos Faltando
-
-Baseado na documentação do jQuery 4.0 Upgrade Guide, adicionar polyfills para todos os métodos depreciados que o Bold Reports pode usar:
-
-| Método | Status | Ação |
-|--------|--------|------|
-| `$.parseJSON` | Removido em jQuery 4 | Adicionar polyfill |
-| `$.isWindow` | Removido em jQuery 4 | Ja existe |
-| `$.isFunction` | Removido em jQuery 4 | Ja existe |
-| `$.isArray` | Removido em jQuery 4 | Ja existe |
-| `$.isNumeric` | Removido em jQuery 4 | Ja existe |
-| `$.type` | Removido em jQuery 4 | Ja existe |
-| `$.trim` | Removido em jQuery 4 | Considerar adicionar |
-| `$.now` | Removido em jQuery 4 | Considerar adicionar |
+Adicionar a mesma propriedade à interface `BoldReportViewerProps`.
 
 ---
 
 ### Detalhes Tecnicos
 
-**Arquivo a ser modificado:** `src/globals.ts`
+**Arquivo principal a modificar**: `src/components/ReportViewer.tsx`
 
-**Alteracoes necessarias:**
+**Arquivos de tipos a atualizar**:
+- `src/types/boldReportsViewer.d.ts`
+- `src/globals.ts`
 
-1. Adicionar polyfill para `$.parseJSON`:
-```typescript
-// $.parseJSON - Bold Reports usa internamente para processar respostas AJAX
-if (typeof jq.parseJSON !== 'function') {
-  jq.parseJSON = function(data: string | null) {
-    if (data === null || data === undefined) {
-      return null;
-    }
-    return JSON.parse(data + '');
-  };
-}
-```
-
-2. Adicionar polyfills preventivos para `$.trim` e `$.now`:
-```typescript
-// $.trim - pode ser usado por widgets do Bold Reports
-if (typeof jq.trim !== 'function') {
-  jq.trim = function(text: string | null | undefined) {
-    return text == null ? '' : (text + '').replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
-  };
-}
-
-// $.now - pode ser usado para timestamps
-if (typeof jq.now !== 'function') {
-  jq.now = Date.now;
-}
-```
-
-3. Reorganizar o arquivo para garantir que polyfills sejam aplicados antes da exposicao global.
+**Propriedades do componente após correção**:
+- `reportServiceUrl`: URL fixa do serviço de viewer do Cloud
+- `reportServerUrl`: URL do servidor do site específico
+- `serviceAuthorizationToken`: Token de autenticação no formato "bearer {token}"
+- `reportPath`: Caminho no formato /{Categoria}/{NomeRelatorio}
 
 ---
 
-### Verificacao Pos-Implementacao
+### Verificação Pos-Implementacao
 
-Apos aplicar as correcoes:
-
-1. Abrir um relatorio no visualizador
-2. Verificar console para erros
-3. Testar exportacao em diferentes formatos
-4. Confirmar que o relatorio carrega completamente
+1. Abrir um relatório no visualizador
+2. Verificar no console se não há erros de requisição
+3. Confirmar que o relatório carrega e exibe corretamente
+4. Testar exportação em PDF para validar que o viewer está funcional
 
 ---
 
@@ -108,7 +114,7 @@ Apos aplicar as correcoes:
 
 | Risco | Probabilidade | Mitigacao |
 |-------|--------------|-----------|
-| Outros metodos jQuery faltando | Media | Adicionar polyfills preventivos para todos os metodos depreciados |
-| Conflito com versao do jQuery | Baixa | Polyfills verificam existencia antes de adicionar |
-| Performance | Baixa | Polyfills sao simples wrappers |
+| CategoryName pode ser undefined | Media | Usar fallback para string vazia ou "Reports" |
+| Nome do relatório com caracteres especiais | Baixa | O Bold Reports deve lidar internamente com encoding |
+| Token expirado | Media | O token já é renovado pela edge function |
 
