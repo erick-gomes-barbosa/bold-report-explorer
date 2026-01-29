@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { FileText, RefreshCw, AlertCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ReportCard } from '@/components/ReportCard';
 import { ExportPanel } from '@/components/ExportPanel';
 import { ReportViewer } from '@/components/ReportViewer';
+import { CategoryFilter } from '@/components/CategoryFilter';
 import { useBoldReports } from '@/hooks/useBoldReports';
 import { useReportViewer } from '@/hooks/useReportViewer';
 import { toast } from 'sonner';
@@ -27,6 +28,7 @@ const Index = () => {
   
   const [selectedReport, setSelectedReport] = useState<BoldReport | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerParams, setViewerParams] = useState<Record<string, string | string[]>>({});
 
@@ -61,11 +63,22 @@ const Index = () => {
     setViewerOpen(true);
   };
 
-  const filteredReports = reports.filter(report =>
-    report.Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    report.Description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    report.CategoryName?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filtra relatórios por categoria e busca
+  const filteredReports = useMemo(() => {
+    return reports.filter(report => {
+      // Filtro por categoria
+      const categoryMatch = selectedCategory === 'all' || 
+        (report.CategoryName || 'Sem Categoria') === selectedCategory;
+      
+      // Filtro por busca textual
+      const searchMatch = 
+        report.Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        report.Description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        report.CategoryName?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return categoryMatch && searchMatch;
+    });
+  }, [reports, selectedCategory, searchQuery]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -112,8 +125,13 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Reports List */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <CategoryFilter
+                reports={reports}
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+              />
+              <div className="relative flex-1 w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar relatórios..."
