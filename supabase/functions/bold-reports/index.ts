@@ -26,24 +26,36 @@ const FORMAT_MAPPING: Record<string, { extension: string; mimeType: string }> = 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getAccessToken(): Promise<string> {
+  console.group('[BoldReports Edge] Obtendo token de acesso');
+  
   // If we have a static token configured, use it directly
   if (BOLD_TOKEN) {
-    console.log('Using static BOLD_TOKEN');
+    console.log('[BoldReports Edge] Token source: BOLD_TOKEN (estático)');
+    console.log('[BoldReports Edge] Token length:', BOLD_TOKEN.length);
+    console.log('[BoldReports Edge] Token preview:', BOLD_TOKEN.substring(0, 50) + '...');
+    console.groupEnd();
     return BOLD_TOKEN;
   }
 
   // Otherwise, try to generate token via email/password
   if (!BOLD_EMAIL || !BOLD_PASSWORD) {
+    console.error('[BoldReports Edge] Nenhum método de autenticação configurado');
+    console.groupEnd();
     throw new Error('No BOLD_TOKEN or BOLD_EMAIL/BOLD_PASSWORD configured');
   }
 
   // Check if we have a valid cached token
   if (cachedToken && cachedToken.expiresAt > Date.now()) {
-    console.log('Using cached token');
+    console.log('[BoldReports Edge] Token source: cached');
+    console.log('[BoldReports Edge] Token expiry:', new Date(cachedToken.expiresAt).toISOString());
+    console.log('[BoldReports Edge] Token preview:', cachedToken.token.substring(0, 50) + '...');
+    console.groupEnd();
     return cachedToken.token;
   }
 
-  console.log('Generating new access token...');
+  console.log('[BoldReports Edge] Token source: password_grant (gerando novo)');
+  console.log('[BoldReports Edge] Email:', BOLD_EMAIL);
+  console.log('[BoldReports Edge] Token URL:', TOKEN_URL);
   
   const formData = new URLSearchParams();
   formData.append('grant_type', 'password');
@@ -59,10 +71,11 @@ async function getAccessToken(): Promise<string> {
   });
 
   const responseText = await response.text();
-  console.log('Token response status:', response.status);
+  console.log('[BoldReports Edge] Token response status:', response.status);
 
   if (!response.ok) {
-    console.error('Token error response:', responseText);
+    console.error('[BoldReports Edge] Token error response:', responseText.substring(0, 200));
+    console.groupEnd();
     throw new Error(`Failed to get access token: ${responseText}`);
   }
 
@@ -75,7 +88,11 @@ async function getAccessToken(): Promise<string> {
     expiresAt: Date.now() + (expiresIn - 300) * 1000,
   };
 
-  console.log('Token generated successfully');
+  console.log('[BoldReports Edge] Token gerado com sucesso');
+  console.log('[BoldReports Edge] Token expiry:', new Date(cachedToken.expiresAt).toISOString());
+  console.log('[BoldReports Edge] Token preview:', tokenData.access_token.substring(0, 50) + '...');
+  console.groupEnd();
+  
   return tokenData.access_token;
 }
 

@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { BoldReport, ExportFormat } from '@/types/boldReports';
-import type { BoldReportViewerInstance, BoldReportParameter } from '@/types/boldReportsViewer';
+import type { BoldReportViewerInstance, BoldReportParameter, AjaxBeforeLoadEventArgs } from '@/types/boldReportsViewer';
 import { toast } from 'sonner';
 
 interface ReportViewerProps {
@@ -23,9 +23,12 @@ interface ReportViewerProps {
 
 // URLs do Bold Reports Cloud
 const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
-// Para Cloud tenants, o formato é: https://{siteId}.boldreports.com/reporting/api/
+
+// CORRIGIDO: Formato Cloud padrão que corresponde ao issuer/audience do token JWT
+// Token iss/aud: https://cloud.boldreports.com/reporting/site/{siteId}
+// Antes usava: https://{siteId}.boldreports.com/reporting/api/ (INCORRETO - domínio diferente do token)
 const getBoldReportsServerUrl = (siteId: string) => 
-  `https://${siteId}.boldreports.com/reporting/api/`;
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
@@ -52,6 +55,9 @@ export function ReportViewer({
   const viewerContainerId = `reportviewer-${report.Id.replace(/[^a-zA-Z0-9]/g, '-')}`;
   const viewerInstanceRef = useRef<BoldReportViewerInstance | null>(null);
 
+  // Caminho do relatório no formato /{CategoryName}/{ReportName}
+  const reportPath = `/${report.CategoryName || 'Reports'}/${report.Name}`;
+
   // Converte parâmetros para o formato esperado pelo Bold Reports
   const convertParameters = useCallback((): BoldReportParameter[] => {
     return Object.entries(parameterValues).map(([name, value]) => ({
@@ -61,16 +67,51 @@ export function ReportViewer({
     }));
   }, [parameterValues]);
 
+  // Log de inicialização quando o viewer é montado
+  useEffect(() => {
+    if (isOpen && token && siteId) {
+      console.group('[BoldReports] Inicializando Viewer');
+      console.log('[BoldReports] Report:', {
+        id: report.Id,
+        name: report.Name,
+        category: report.CategoryName
+      });
+      console.log('[BoldReports] SiteId:', siteId);
+      console.log('[BoldReports] Token (primeiros 50 chars):', token.substring(0, 50) + '...');
+      console.log('[BoldReports] Report Service URL:', BOLD_REPORTS_SERVICE_URL);
+      console.log('[BoldReports] Report Server URL:', getBoldReportsServerUrl(siteId));
+      console.log('[BoldReports] Report Path:', reportPath);
+      console.log('[BoldReports] Service Auth Token:', `bearer ${token.substring(0, 20)}...`);
+      console.log('[BoldReports] Parameters:', convertParameters());
+      console.groupEnd();
+    }
+  }, [isOpen, token, siteId, report, reportPath, convertParameters]);
+
+  // Callback para interceptar requisições AJAX do viewer
+  const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
+    console.group('[BoldReports AJAX] Requisição');
+    console.log('[BoldReports AJAX] URL:', args.url);
+    console.log('[BoldReports AJAX] Method:', args.method || 'GET');
+    console.log('[BoldReports AJAX] Headers:', args.headers);
+    if (args.data) {
+      console.log('[BoldReports AJAX] Data:', typeof args.data === 'string' ? args.data.substring(0, 200) : args.data);
+    }
+    console.groupEnd();
+  }, []);
+
   // Manipula quando o relatório é carregado
   const handleReportLoaded = useCallback(() => {
-    console.log('Bold Reports: Relatório carregado com sucesso');
+    console.log('[BoldReports] ✅ Relatório carregado com sucesso');
     setIsLoading(false);
     setIsReportReady(true);
   }, []);
 
   // Manipula erros do relatório
   const handleReportError = useCallback((args: { errorCode: string; message: string }) => {
-    console.error('Bold Reports Error:', args);
+    console.group('[BoldReports] ❌ Erro no relatório');
+    console.error('[BoldReports] Error Code:', args.errorCode);
+    console.error('[BoldReports] Message:', args.message);
+    console.groupEnd();
     setIsLoading(false);
     toast.error(`Erro ao carregar relatório: ${args.message}`);
   }, []);
@@ -125,8 +166,7 @@ export function ReportViewer({
     setIsFullscreen(!isFullscreen);
   };
 
-  // Caminho do relatório no formato /{CategoryName}/{ReportName}
-  const reportPath = `/${report.CategoryName || 'Reports'}/${report.Name}`;
+  // reportPath já é definido no início do componente
 
   // Verifica se o componente Bold Reports está disponível
   const BoldReportViewerComponent = window.BoldReportViewerComponent;
@@ -240,6 +280,7 @@ export function ReportViewer({
                 enablePageCache={true}
                 reportLoaded={handleReportLoaded}
                 reportError={handleReportError}
+                ajaxBeforeLoad={handleAjaxBeforeLoad}
               />
             </div>
           )}
