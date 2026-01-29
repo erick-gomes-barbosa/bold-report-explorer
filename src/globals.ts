@@ -47,6 +47,28 @@ if (typeof jq.type !== 'function') {
   };
 }
 
+// $.parseJSON - Bold Reports usa internamente para processar respostas AJAX
+if (typeof jq.parseJSON !== 'function') {
+  jq.parseJSON = function(data: string | null) {
+    if (data === null || data === undefined) {
+      return null;
+    }
+    return JSON.parse(data + '');
+  };
+}
+
+// $.trim - pode ser usado por widgets do Bold Reports
+if (typeof jq.trim !== 'function') {
+  jq.trim = function(text: string | null | undefined) {
+    return text == null ? '' : (text + '').replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+  };
+}
+
+// $.now - pode ser usado para timestamps
+if (typeof jq.now !== 'function') {
+  jq.now = Date.now;
+}
+
 // Expõe as dependências no escopo global (window) para os scripts base do Bold Reports
 declare global {
   interface Window {
