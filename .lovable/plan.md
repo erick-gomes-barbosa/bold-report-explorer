@@ -1,170 +1,208 @@
 
 
-## Plano de Correcao: Problema 401 com Logs de Diagnostico Granular
+## Plano de Verificacao e Correcao: Integracao Bold Reports React Viewer
 
-### Resumo do Problema
+### 1. Analise Comparativa: Guia vs Implementacao Atual
 
-O Bold Reports Viewer esta retornando erro 401 (Unauthorized) ao tentar carregar relatorios. A analise revelou que ha uma **incompatibilidade entre a URL do servidor e o token JWT**:
+Comparando o guia de integracao fornecido com a implementacao atual, identifiquei os seguintes pontos de atencao:
 
-| Elemento | Valor |
-|----------|-------|
-| Token `iss` (issuer) | `https://cloud.boldreports.com/reporting/site/b2044034` |
-| Token `aud` (audience) | `https://cloud.boldreports.com/reporting/site/b2044034` |
-| URL atual sendo usada | `https://b2044034.boldreports.com/reporting/api/` |
-
-O token foi emitido para `cloud.boldreports.com/reporting/site/{siteId}`, mas as requisicoes estao indo para `{siteId}.boldreports.com` - dominios completamente diferentes.
+| Item | Guia de Referencia | Implementacao Atual | Status |
+|------|-------------------|---------------------|--------|
+| Pacotes NPM | `@boldreports/react-reporting-components`, `create-react-class`, `jquery` | Todos instalados | OK |
+| globals.js | Expor React, ReactDOM, jQuery no window | Implementado em `src/globals.ts` com polyfills extras | OK |
+| Importacao globals | Antes de qualquer import React | Primeira linha em `src/main.tsx` | OK |
+| CSS do viewer | Importar em main.tsx | Importado corretamente | OK |
+| Scripts base | common, widgets, viewer, react | Todos importados em main.tsx | OK |
+| `reportServiceUrl` | URL do Web API Service | `https://service.boldreports.com/api/Viewer` | OK |
+| `reportServerUrl` | URL do servidor de relatorios | **PROBLEMA IDENTIFICADO** | CORRIGIR |
+| `reportPath` | `/{CategoryName}/{ReportName}` | Implementado corretamente | OK |
+| `parameters` | Array de objetos com name/values | Implementado corretamente | OK |
+| `serviceAuthorizationToken` | `bearer <token>` | Implementado corretamente | OK |
 
 ---
 
-### Solucao
+### 2. Problema Principal: Formato da `reportServerUrl`
 
-#### Fase 1: Corrigir a URL do Servidor
+**Descoberta Critica na Documentacao Oficial:**
 
-Alterar `getBoldReportsServerUrl` para usar o formato que corresponde ao issuer/audience do token:
+Para **Cloud Reporting Server**, a documentacao especifica:
+- `reportServerUrl`: `https://<<Report server name>>/reporting/api/`
+- Exemplo: `https://acmecorp.boldreports.com/reporting/api/`
+
+**O que o codigo atual faz:**
+```typescript
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
+// Resultado: https://cloud.boldreports.com/reporting/api/site/b2044034
+```
+
+**O que deveria ser (segundo a documentacao):**
+```typescript
+// Para Cloud Reporting Server, o formato correto e:
+`https://${tenantName}.boldreports.com/reporting/api/`
+// Exemplo: https://acmecorp.boldreports.com/reporting/api/
+```
+
+**Problema**: O siteId (`b2044034`) nao e o nome do tenant/subdominio. Precisamos descobrir qual e o nome correto do tenant ou testar formatos alternativos.
+
+---
+
+### 3. Problema Secundario: Logs AJAX mostrando "undefined"
+
+Os logs mostram:
+```text
+[BoldReports AJAX] Action Name: { "_type": "undefined", "value": "undefined" }
+```
+
+**Causa**: O objeto `args` passado para `ajaxBeforeLoad` esta sendo logado incorretamente. O Bold Reports React passa os argumentos de forma diferente da documentacao JavaScript pura.
+
+**Solucao**: Logar o objeto `args` completo para inspecao antes de tentar acessar propriedades especificas.
+
+---
+
+### 4. Plano de Correcao Detalhado
+
+#### Fase 1: Melhorar Logs de Diagnostico
+
+**Arquivo**: `src/components/ReportViewer.tsx`
+
+Modificar `handleAjaxBeforeLoad` para logar o objeto completo:
 
 ```typescript
-// ANTES (formato subdominio - INCORRETO para este token)
-const getBoldReportsServerUrl = (siteId: string) => 
-  `https://${siteId}.boldreports.com/reporting/api/`;
+const handleAjaxBeforeLoad = useCallback((args: unknown) => {
+  console.group('[BoldReports AJAX] Requisicao');
+  console.log('[BoldReports AJAX] Args completo:', args);
+  console.log('[BoldReports AJAX] Tipo:', typeof args);
+  
+  // Se for objeto, logar todas as chaves
+  if (args && typeof args === 'object') {
+    console.log('[BoldReports AJAX] Chaves:', Object.keys(args as object));
+    
+    // Logar cada propriedade
+    for (const [key, value] of Object.entries(args as object)) {
+      console.log(`[BoldReports AJAX] ${key}:`, value);
+    }
+  }
+  console.groupEnd();
+}, []);
+```
 
-// DEPOIS (formato Cloud padrao - corresponde ao token)
+#### Fase 2: Testar Formatos Alternativos de URL
+
+Adicionar log detalhado de todas as URLs sendo usadas e testar formato alternativo:
+
+**Opcao A - Formato com tenant como subdominio:**
+```typescript
+// Precisa descobrir o nome do tenant
+const getBoldReportsServerUrl = (tenantName: string) => 
+  `https://${tenantName}.boldreports.com/reporting/api/`;
+```
+
+**Opcao B - Formato Cloud padrao (se Opcao A falhar):**
+```typescript
 const getBoldReportsServerUrl = (siteId: string) => 
   `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
 ```
 
-#### Fase 2: Adicionar Logs de Diagnostico Granular
+**Opcao C - Formato sem o path /reporting/api/ no serverUrl:**
 
-Adicionar logs detalhados em cada etapa do processo para facilitar depuracao futura:
+Segundo a documentacao, para alguns casos o `reportServerUrl` pode nao ser necessario quando usando Cloud service URL.
 
-**Arquivo: `src/components/ReportViewer.tsx`**
+#### Fase 3: Adicionar Log de Eventos Adicionais
 
-```typescript
-// Logs no momento da inicializacao
-console.group('[BoldReports] Inicializando Viewer');
-console.log('[BoldReports] Report:', {
-  id: report.Id,
-  name: report.Name,
-  category: report.CategoryName
-});
-console.log('[BoldReports] SiteId:', siteId);
-console.log('[BoldReports] Token (primeiros 50 chars):', token.substring(0, 50) + '...');
-console.log('[BoldReports] Report Service URL:', BOLD_REPORTS_SERVICE_URL);
-console.log('[BoldReports] Report Server URL:', getBoldReportsServerUrl(siteId));
-console.log('[BoldReports] Report Path:', reportPath);
-console.log('[BoldReports] Service Auth Token:', `bearer ${token.substring(0, 20)}...`);
-console.log('[BoldReports] Parameters:', convertParameters());
-console.groupEnd();
-```
-
-**Arquivo: `src/hooks/useReportViewer.ts`**
+Adicionar callbacks para eventos `ajaxSuccess` e `ajaxError` para capturar respostas:
 
 ```typescript
-// Logs na busca da configuracao
-console.group('[BoldReports] Buscando configuracao do viewer');
-console.log('[BoldReports] Chamando edge function: get-viewer-config');
-// ... apos resposta
-console.log('[BoldReports] Resposta recebida:', {
-  success: data?.success,
-  siteId: data?.siteId,
-  tokenLength: data?.token?.length,
-  tokenPreview: data?.token?.substring(0, 50) + '...'
-});
-console.groupEnd();
-```
+// Adicionar ao BoldReportViewerComponent
+ajaxSuccess={(args: unknown) => {
+  console.group('[BoldReports AJAX] Sucesso');
+  console.log('[BoldReports AJAX] Response:', args);
+  console.groupEnd();
+}}
 
-**Arquivo: `supabase/functions/bold-reports/index.ts`**
-
-```typescript
-// Logs detalhados de autenticacao
-console.log('[BoldReports Edge] Gerando/validando token...');
-console.log('[BoldReports Edge] Token source:', BOLD_TOKEN ? 'BOLD_TOKEN' : 'password_grant');
-console.log('[BoldReports Edge] Token expiry (cached):', cachedToken?.expiresAt);
-```
-
-#### Fase 3: Adicionar Callback de Evento AJAX
-
-Usar o callback `ajaxBeforeLoad` para logar TODAS as requisicoes HTTP do viewer:
-
-```typescript
-ajaxBeforeLoad={(args: AjaxBeforeLoadEventArgs) => {
-  console.group('[BoldReports AJAX] Requisicao');
-  console.log('[BoldReports AJAX] URL:', args.url);
-  console.log('[BoldReports AJAX] Method:', args.method || 'GET');
-  console.log('[BoldReports AJAX] Headers:', args.headers);
-  console.log('[BoldReports AJAX] Data:', args.data);
+ajaxError={(args: unknown) => {
+  console.group('[BoldReports AJAX] Erro');
+  console.log('[BoldReports AJAX] Error:', args);
   console.groupEnd();
 }}
 ```
 
----
+#### Fase 4: Atualizar Tipos
 
-### Arquivos a Modificar
+**Arquivo**: `src/types/boldReportsViewer.d.ts`
 
-1. **`src/components/ReportViewer.tsx`**
-   - Corrigir `getBoldReportsServerUrl` para formato Cloud
-   - Adicionar logs de inicializacao
-   - Adicionar callback `ajaxBeforeLoad` para interceptar requisicoes
-   - Melhorar logs nos handlers `handleReportLoaded` e `handleReportError`
+Adicionar eventos de sucesso e erro:
 
-2. **`src/hooks/useReportViewer.ts`**
-   - Adicionar logs na funcao `fetchViewerConfig`
-
-3. **`supabase/functions/bold-reports/index.ts`**
-   - Adicionar logs mais detalhados no processo de autenticacao
-
-4. **`src/types/boldReportsViewer.d.ts`**
-   - Adicionar tipo `AjaxBeforeLoadEventArgs` para o callback
-
----
-
-### Detalhes Tecnicos
-
-**Estrutura dos Logs**
-
-Todos os logs seguirao o padrao:
-- `[BoldReports]` - Logs do componente React
-- `[BoldReports AJAX]` - Logs de requisicoes HTTP do viewer
-- `[BoldReports Edge]` - Logs da edge function
-
-Uso de `console.group()` e `console.groupEnd()` para agrupar logs relacionados.
-
-**Callback ajaxBeforeLoad**
-
-Interface esperada:
 ```typescript
-interface AjaxBeforeLoadEventArgs {
-  url: string;
-  method?: string;
-  headers: Record<string, string>;
-  data?: unknown;
-  cancel?: boolean;
+interface BoldReportViewerProps {
+  // ... props existentes
+  ajaxSuccess?: (args: unknown) => void;
+  ajaxError?: (args: unknown) => void;
 }
 ```
 
-Este callback permite:
-1. Ver a URL exata sendo chamada
-2. Verificar se os headers de autenticacao estao corretos
-3. Potencialmente modificar a requisicao antes do envio
+---
+
+### 5. Questao Pendente: Nome do Tenant
+
+Para a `reportServerUrl` funcionar corretamente no Cloud, precisamos de uma dessas informacoes:
+
+1. **Nome do tenant/subdominio** - Ex: `baymetrics` resultaria em `https://baymetrics.boldreports.com/reporting/api/`
+2. **Confirmacao de que o formato `cloud.boldreports.com/reporting/api/site/{siteId}` e aceito** - Este e o formato que o token JWT usa no `iss`/`aud`
+
+O token JWT mostra:
+- `iss`: `https://cloud.boldreports.com/reporting/site/b2044034`
+- `aud`: `https://cloud.boldreports.com/reporting/site/b2044034`
+
+Note que o issuer usa `/reporting/site/{siteId}` mas a implementacao atual usa `/reporting/api/site/{siteId}`. Isso pode ser a causa do 401.
 
 ---
 
-### Verificacao Pos-Implementacao
+### 6. Arquivos a Modificar
 
-1. Abrir o console do navegador (F12)
+1. **`src/components/ReportViewer.tsx`**
+   - Melhorar logging do `ajaxBeforeLoad`
+   - Adicionar callbacks `ajaxSuccess` e `ajaxError`
+   - Testar formatos de URL alternativos
+
+2. **`src/types/boldReportsViewer.d.ts`**
+   - Adicionar tipos para `ajaxSuccess` e `ajaxError`
+
+3. **`src/globals.ts`**
+   - Manter como esta (polyfills estao corretos)
+
+---
+
+### 7. Verificacao Pos-Implementacao
+
+1. Abrir console do navegador (F12)
 2. Abrir um relatorio no visualizador
-3. Verificar os logs agrupados:
-   - `[BoldReports] Inicializando Viewer` - configuracao inicial
-   - `[BoldReports AJAX] Requisicao` - cada requisicao HTTP
-   - Verificar se URLs correspondem ao formato esperado
-4. Se ainda houver erro 401, os logs mostrarao exatamente qual URL e headers estao sendo usados
+3. Observar logs `[BoldReports AJAX]`:
+   - Verificar estrutura real do objeto `args`
+   - Identificar quais propriedades estao disponiveis
+   - Verificar URLs sendo chamadas
+4. Se houver erro 401:
+   - Verificar logs de `ajaxError`
+   - Comparar URL do request com issuer do token
+5. Testar formatos de URL alternativos conforme necessario
 
 ---
 
-### Riscos e Mitigacoes
+### 8. Detalhes Tecnicos
 
-| Risco | Probabilidade | Mitigacao |
-|-------|--------------|-----------|
-| Logs excessivos em producao | Media | Usar variavel de ambiente para controlar nivel de log |
-| URL Cloud nao funcionar | Baixa | O token indica que Cloud e o formato correto |
-| Exposicao de token no console | Media | Mostrar apenas preview do token (primeiros 20-50 chars) |
+**Propriedades do BoldReportViewerComponent apos correcao:**
+
+| Propriedade | Valor | Observacao |
+|-------------|-------|------------|
+| `id` | `reportviewer-{reportId}` | ID unico do container |
+| `reportServiceUrl` | `https://service.boldreports.com/api/Viewer` | URL fixa do servico Cloud |
+| `reportServerUrl` | A ser determinado | Testar formatos alternativos |
+| `serviceAuthorizationToken` | `bearer {token}` | Token JWT gerado pela edge function |
+| `reportPath` | `/{CategoryName}/{ReportName}` | Caminho do relatorio |
+| `parameters` | Array de `{name, values}` | Parametros do relatorio |
+| `ajaxBeforeLoad` | Callback de log | Para diagnostico |
+| `ajaxSuccess` | Callback de log | Para diagnostico |
+| `ajaxError` | Callback de log | Para diagnostico |
+| `reportLoaded` | Handler de sucesso | Para controle de estado |
+| `reportError` | Handler de erro | Para exibir mensagens |
 
