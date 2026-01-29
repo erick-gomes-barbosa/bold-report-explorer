@@ -134,12 +134,14 @@ serve(async (req) => {
 
     switch (action) {
       case 'get-viewer-config':
-        // Return the site ID and token for the embedded viewer
+        // Return the site ID, token and server URL for the embedded viewer
+        // CORRIGIDO: Usar formato Cloud centralizado sem /site/{siteId} no path
         return new Response(
           JSON.stringify({ 
             success: true, 
             siteId: BOLD_SITE_ID,
-            token: accessToken
+            token: accessToken,
+            reportServerUrl: 'https://cloud.boldreports.com/reporting/api/'
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

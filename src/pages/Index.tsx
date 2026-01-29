@@ -201,6 +201,7 @@ const Index = () => {
           parameterValues={viewerParams}
           siteId={viewerConfig.siteId}
           token={viewerConfig.token}
+          reportServerUrl={viewerConfig.reportServerUrl}
           isOpen={viewerOpen}
           onClose={() => setViewerOpen(false)}
         />

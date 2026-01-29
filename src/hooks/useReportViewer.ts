@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface ViewerConfig {
   siteId: string;
   token: string;
+  reportServerUrl?: string;
 }
 
 export function useReportViewer() {
@@ -37,8 +38,10 @@ export function useReportViewer() {
         setViewerConfig({
           siteId: data.siteId,
           token: data.token || '',
+          reportServerUrl: data.reportServerUrl,
         });
         console.log('[BoldReports] Configuração salva com sucesso');
+        console.log('[BoldReports] Report Server URL:', data.reportServerUrl);
       } else {
         throw new Error('Configuração do viewer não disponível');
       }
