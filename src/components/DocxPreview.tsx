@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -8,27 +8,59 @@ interface DocxPreviewProps {
 }
 
 export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerReady, setContainerReady] = useState(false);
   const [renderLoading, setRenderLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const renderAttemptedRef = useRef(false);
+
+  // Callback ref to detect when container is mounted
+  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
+    if (node) {
+      setContainerReady(true);
+    }
+  }, []);
 
   useEffect(() => {
     const renderDocument = async () => {
-      if (!fileBlob || !containerRef.current || loading) return;
+      // Wait for all conditions to be met
+      if (!fileBlob || !containerRef.current || loading || !containerReady) {
+        console.log('[DocxPreview] Waiting for conditions:', {
+          hasBlob: !!fileBlob,
+          hasContainer: !!containerRef.current,
+          loading,
+          containerReady
+        });
+        return;
+      }
+
+      // Prevent double render
+      if (renderAttemptedRef.current) {
+        return;
+      }
+      renderAttemptedRef.current = true;
 
       setRenderLoading(true);
       setRenderError(null);
 
-      // Clear previous content
-      containerRef.current.innerHTML = '';
+      const container = containerRef.current;
 
       try {
+        // Clear previous content safely
+        container.innerHTML = '';
+
         // Dynamically import docx-preview to avoid SSR issues
         const docxPreview = await import('docx-preview');
         
         console.log('[DocxPreview] Rendering document, blob size:', fileBlob.size, 'type:', fileBlob.type);
         
-        await docxPreview.renderAsync(fileBlob, containerRef.current, undefined, {
+        // Double-check container is still valid after async import
+        if (!containerRef.current) {
+          throw new Error('Container was unmounted during import');
+        }
+        
+        await docxPreview.renderAsync(fileBlob, container, undefined, {
           className: 'docx-preview-content',
           inWrapper: true,
           ignoreWidth: false,
@@ -56,13 +88,21 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
     };
 
     renderDocument();
-  }, [fileBlob, loading]);
+  }, [fileBlob, loading, containerReady]);
+
+  // Reset render attempt when blob changes
+  useEffect(() => {
+    renderAttemptedRef.current = false;
+  }, [fileBlob]);
 
   // Reset state when no file
   useEffect(() => {
-    if (!fileBlob && containerRef.current) {
-      containerRef.current.innerHTML = '';
+    if (!fileBlob) {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
       setRenderError(null);
+      renderAttemptedRef.current = false;
     }
   }, [fileBlob]);
 
@@ -103,7 +143,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
     <ScrollArea className="h-full">
       <div className="p-4 flex justify-center">
         <div
-          ref={containerRef}
+          ref={setContainerRef}
           className="docx-container bg-white shadow-lg max-w-full"
           style={{
             minHeight: '500px',
