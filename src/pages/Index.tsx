@@ -6,9 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ReportCard } from '@/components/ReportCard';
 import { ExportPanel } from '@/components/ExportPanel';
 import { CategoryFilter } from '@/components/CategoryFilter';
-import { ReportViewer } from '@/components/ReportViewer';
 import { useBoldReports } from '@/hooks/useBoldReports';
-import { useReportViewer } from '@/hooks/useReportViewer';
 import { toast } from 'sonner';
 import type { BoldReport, ExportFormat } from '@/types/boldReports';
 
@@ -24,18 +22,13 @@ const Index = () => {
     clearError 
   } = useBoldReports();
   
-  const { viewerConfig, fetchViewerConfig } = useReportViewer();
-  
   const [selectedReport, setSelectedReport] = useState<BoldReport | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerParams, setViewerParams] = useState<Record<string, string | string[]>>({});
 
   useEffect(() => {
     fetchReports();
-    fetchViewerConfig();
-  }, [fetchReports, fetchViewerConfig]);
+  }, [fetchReports]);
 
   useEffect(() => {
     if (selectedReport) {
@@ -52,15 +45,6 @@ const Index = () => {
     } else {
       toast.error('Erro ao exportar relatório');
     }
-  };
-
-  const handleView = (params: Record<string, string | string[]>) => {
-    if (!selectedReport || !viewerConfig) {
-      toast.error('Configuração do viewer não disponível');
-      return;
-    }
-    setViewerParams(params);
-    setViewerOpen(true);
   };
 
   // Filtra relatórios por categoria e busca
@@ -179,7 +163,6 @@ const Index = () => {
                   parameters={parameters}
                   loading={loading}
                   onExport={handleExport}
-                  onView={viewerConfig ? handleView : undefined}
                 />
               ) : (
                 <div className="bg-muted/50 rounded-lg p-8 text-center border border-dashed border-border">
@@ -193,19 +176,6 @@ const Index = () => {
           </div>
         </div>
       </main>
-
-      {/* Report Viewer Dialog */}
-      {selectedReport && viewerConfig && (
-        <ReportViewer
-          open={viewerOpen}
-          onOpenChange={setViewerOpen}
-          reportPath={selectedReport.Path || `/${selectedReport.CategoryName}/${selectedReport.Name}`}
-          reportName={selectedReport.Name}
-          siteId={viewerConfig.siteId}
-          token={viewerConfig.token}
-          parameters={viewerParams}
-        />
-      )}
     </div>
   );
 };
