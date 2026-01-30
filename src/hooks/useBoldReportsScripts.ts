@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 
+// Import Syncfusion base - required by Bold Reports
+import '@syncfusion/ej2/base';
+
 interface ScriptStatus {
   loaded: boolean;
   loading: boolean;
@@ -22,14 +25,6 @@ const SCRIPTS = [
     },
   },
   {
-    id: 'jsrender',
-    sources: [
-      '/scripts/jsrender.min.js',
-      'https://cdn.jsdelivr.net/npm/jsrender@1.0.12/jsrender.min.js',
-    ],
-    check: () => typeof window !== 'undefined' && !!window.jQuery?.templates,
-  },
-  {
     id: 'bold-common',
     sources: [
       '/scripts/bold.reports.common.min.js',
@@ -41,7 +36,6 @@ const SCRIPTS = [
     sources: [
       '/scripts/bold.reports.widgets.min.js',
     ],
-    // widgets may initialize differently, just check if ej exists
     check: () => typeof window !== 'undefined' && !!window.ej,
   },
   {
