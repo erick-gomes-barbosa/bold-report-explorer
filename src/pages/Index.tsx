@@ -35,6 +35,8 @@ const Index = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('PDF');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [useEmbeddedViewer, setUseEmbeddedViewer] = useState(true);
+  const [currentPreviewParams, setCurrentPreviewParams] = useState<Record<string, string | string[]>>({});
 
   useEffect(() => {
     fetchReports();
@@ -60,6 +62,16 @@ const Index = () => {
   const handlePreview = async (format: ExportFormat, params: Record<string, string | string[]>) => {
     if (!selectedReport) return;
     
+    // Store parameters for embedded viewer
+    setCurrentPreviewParams(params);
+    
+    // Use embedded viewer for all formats
+    if (useEmbeddedViewer) {
+      setPreviewOpen(true);
+      return;
+    }
+    
+    // Fallback to export-based preview
     const success = await generatePreview(selectedReport.Id, format, params);
     if (success) {
       setPreviewOpen(true);
@@ -220,10 +232,13 @@ const Index = () => {
         onOpenChange={handlePreviewClose}
         fileUrl={previewUrl}
         fileBlob={previewBlob}
-        format={previewFormat}
+        format={useEmbeddedViewer ? 'PDF' : previewFormat}
         loading={previewLoading}
         onDownload={handleDownloadFromPreview}
         documentName={selectedReport?.Name}
+        useEmbeddedViewer={useEmbeddedViewer}
+        reportPath={selectedReport?.Path}
+        reportParameters={currentPreviewParams}
       />
     </div>
   );

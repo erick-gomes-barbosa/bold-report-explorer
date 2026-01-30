@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@boldreports/react-reporting-components": "^12.2.8",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -51,6 +52,7 @@
     "docx-preview": "^0.3.7",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
+    "jquery": "^4.0.0",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
