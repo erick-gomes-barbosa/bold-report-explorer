@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Download, FileSpreadsheet, FileText, FileType, Loader2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ParameterForm } from './ParameterForm';
 import type { BoldReport, ReportParameter, ExportFormat } from '@/types/boldReports';
 
@@ -106,56 +107,82 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
               const isSelected = selectedFormat === format;
               
               return (
-                <Button
-                  key={format}
-                  variant="outline"
-                  size="sm"
-                  className={`justify-center gap-1.5 transition-all ${
-                    isSelected 
-                      ? `${colors.bg} ${colors.text} ${colors.border} ring-2 ring-offset-1 ring-current` 
-                      : `hover:${colors.bg} hover:${colors.text} hover:${colors.border}`
-                  }`}
-                  onClick={() => setSelectedFormat(format)}
-                >
-                  <span className={isSelected ? colors.text : colors.text}>{icon}</span>
-                  <span className="hidden lg:inline">{label}</span>
-                </Button>
+                <TooltipProvider key={format}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`justify-center gap-1.5 transition-all ${
+                          isSelected 
+                            ? `${colors.bg} ${colors.text} ${colors.border} ring-2 ring-offset-1 ring-current` 
+                            : `hover:${colors.bg} hover:${colors.text} hover:${colors.border}`
+                        }`}
+                        onClick={() => setSelectedFormat(format)}
+                      >
+                        <span className={isSelected ? colors.text : colors.text}>{icon}</span>
+                        <span className="hidden xl:inline">{label}</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="xl:hidden">
+                      <p>{label}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               );
             })}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex gap-2">
             {onView && (
-              <Button 
-                onClick={handleView}
-                disabled={loading}
-                variant="outline"
-                className="flex-1 gap-2"
-                size="lg"
-              >
-                <Eye className="h-4 w-4" />
-                <span className="hidden lg:inline">Visualizar</span>
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      onClick={handleView}
+                      disabled={loading}
+                      variant="outline"
+                      className="flex-1 gap-2 min-w-0"
+                      size="lg"
+                    >
+                      <Eye className="h-4 w-4 shrink-0" />
+                      <span className="hidden xl:inline">Visualizar</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="xl:hidden">
+                    <p>Visualizar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
             
-            <Button 
-              onClick={handleExport} 
-              disabled={loading}
-              className="flex-1 gap-2"
-              size="lg"
-            >
-            {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="hidden lg:inline">Exportando...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4" />
-                  <span className="hidden lg:inline">Exportar</span>
-                </>
-              )}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={handleExport} 
+                    disabled={loading}
+                    className="flex-1 gap-2 min-w-0"
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        <span className="hidden xl:inline">Exportando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 shrink-0" />
+                        <span className="hidden xl:inline">Exportar</span>
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="xl:hidden">
+                  <p>{loading ? 'Exportando...' : 'Exportar'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </CardContent>
       </Card>
