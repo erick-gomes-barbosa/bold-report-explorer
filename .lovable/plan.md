@@ -1,132 +1,153 @@
 
-## Plano de Tratativas Responsivas para Botões de Ação
+## Plano de Correcao do Erro 401 - Bold Reports Viewer
 
-### Diagnóstico do Problema
+### Contexto
 
-O layout atual apresenta um conflito de breakpoints:
-
-| Breakpoint | Layout Grid | Largura do ExportPanel | Texto nos Botões |
-|------------|-------------|------------------------|------------------|
-| < 640px (sm) | 1 coluna | 100% viewport | Escondido |
-| 640px - 1024px | 1 coluna | 100% viewport | Escondido |
-| >= 1024px (lg) | 3 colunas | ~33% viewport (~350-450px) | **Visível (problema!)** |
-
-O texto aparece exatamente quando o container fica mais estreito, causando a quebra visual.
+O documento PDF analisado identifica que o erro 401 nao e causado por token invalido, mas sim por **falhas na propagacao de cabecalhos** e **incompatibilidades de configuracao de URLs**. A Edge Function funciona porque faz chamadas diretas com o token, mas o componente React Viewer falha porque suas requisicoes AJAX internas nao estao recebendo o token corretamente.
 
 ---
 
-### Solução Proposta: Breakpoint Personalizado + Ajustes de Layout
+### Fase 1: Corrigir reportServerUrl (Critico)
 
-#### Fase 1: Criar breakpoint customizado para containers estreitos
+**Arquivo:** `src/components/ReportViewer.tsx`
 
-Adicionar um breakpoint `xl` (1280px) para exibir texto nos botões somente quando há espaço suficiente:
+**Problema:** O documento indica que a URL do servidor deve ser o formato base **sem** o sufixo `/site/{siteId}`, pois o componente Viewer anexa dinamicamente os endpoints.
 
+**De:**
 ```typescript
-// tailwind.config.ts - Não precisa alteração, xl já existe (1280px)
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
 ```
 
-#### Fase 2: Atualizar ExportPanel.tsx
-
-**Alteração 1** - Botões de formato de exportação (grid 4 colunas):
-
+**Para:**
 ```typescript
-// DE:
-<span className="hidden lg:inline">{label}</span>
-
-// PARA:
-<span className="hidden xl:inline">{label}</span>
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/`;
 ```
 
-**Alteração 2** - Botões Visualizar e Exportar:
+> Nota: O documento especifica que "o componente Viewer muitas vezes exige a URL base do servidor sem o sufixo do site, pois ele anexa dinamicamente os endpoints necessarios".
 
+---
+
+### Fase 2: Refatorar handleAjaxBeforeLoad (Critico)
+
+**Arquivo:** `src/components/ReportViewer.tsx`
+
+**Problema:** A versao 12.2.7 do Bold Reports espera que os cabecalhos sejam inseridos via `args.headers.push()` (array), nao via atribuicao direta a `args.headerReq`.
+
+**De (linha 97-117):**
 ```typescript
-// DE:
-<span className="hidden lg:inline">Visualizar</span>
-<span className="hidden lg:inline">Exportar</span>
-<span className="hidden lg:inline">Exportando...</span>
-
-// PARA:
-<span className="hidden xl:inline">Visualizar</span>
-<span className="hidden xl:inline">Exportar</span>
-<span className="hidden xl:inline">Exportando...</span>
+const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
+  if (token && args) {
+    const bearerToken = `bearer ${token}`;
+    args.serviceAuthorizationToken = bearerToken;
+    
+    if (!args.headerReq) {
+      args.headerReq = {};
+    }
+    args.headerReq['Authorization'] = bearerToken;
+  }
+}, [token]);
 ```
 
-**Alteração 3** - Melhorar layout dos botões de ação para garantir que não quebrem:
-
+**Para (conforme documentacao oficial):**
 ```typescript
-// DE:
-<div className="flex flex-col sm:flex-row gap-2">
-
-// PARA:
-<div className="flex gap-2">
-```
-
-Remover `flex-col` para manter os botões sempre lado a lado (já que terão apenas ícones em telas menores).
-
-**Alteração 4** - Adicionar `min-w-0` e `shrink-0` para evitar compressão excessiva:
-
-```typescript
-<Button 
-  ...
-  className="flex-1 gap-2 min-w-0"
->
-```
-
-#### Fase 3: Adicionar Tooltips para acessibilidade
-
-Quando os botões mostram apenas ícones, é importante que o usuário saiba o que cada um faz. Utilizaremos o componente `Tooltip` existente:
-
-```typescript
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
-// Envolver cada botão com Tooltip quando estiver em modo ícone
-<TooltipProvider>
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Button ...>
-        <Eye className="h-4 w-4" />
-        <span className="hidden xl:inline">Visualizar</span>
-      </Button>
-    </TooltipTrigger>
-    <TooltipContent className="xl:hidden">
-      <p>Visualizar</p>
-    </TooltipContent>
-  </Tooltip>
-</TooltipProvider>
+const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
+  console.log('[BoldReports AJAX] Action:', args?.actionName || 'N/A');
+  
+  if (token && args) {
+    const bearerToken = `bearer ${token}`;
+    
+    // Metodo 1: Usar args.headers.push() conforme doc v12.2.7
+    if (args.headers && Array.isArray(args.headers)) {
+      // Remover cabecalhos de autorizacao existentes para evitar duplicidade
+      args.headers = args.headers.filter((h: { Key: string }) => h.Key !== 'Authorization');
+      
+      // Injetar novo token
+      args.headers.push({
+        Key: 'Authorization',
+        Value: bearerToken
+      });
+    }
+    
+    // Metodo 2: Tambem definir serviceAuthorizationToken como fallback
+    args.serviceAuthorizationToken = bearerToken;
+    
+    console.log('[BoldReports AJAX] Token injetado via headers.push()');
+  } else {
+    console.warn('[BoldReports AJAX] Token nao disponivel');
+  }
+}, [token]);
 ```
 
 ---
 
-### Resumo das Alterações
+### Fase 3: Atualizar Tipo TypeScript
 
-| Arquivo | Alteração |
+**Arquivo:** `src/types/boldReportsViewer.d.ts`
+
+**Adicionar:** Tipo para o array `headers` no evento `ajaxBeforeLoad`:
+
+```typescript
+export interface AjaxBeforeLoadEventArgs {
+  reportViewerToken?: string;
+  serviceAuthorizationToken?: string;
+  headerReq?: Record<string, string>;
+  headers?: Array<{ Key: string; Value: string }>; // ADICIONAR
+  data?: string;
+  actionName?: string;
+}
+```
+
+---
+
+### Fase 4: Configuracao CORS (Acao Manual - Usuario)
+
+O usuario deve acessar o painel de administracao do Bold Reports Cloud e adicionar os dominios do Lovable:
+
+**Passos:**
+1. Acessar https://cloud.boldreports.com/
+2. Navegar ate **Settings > CORS Policy**
+3. Habilitar **Customize CORS Policy**
+4. Adicionar os seguintes dominios em **Allowed Origins**:
+   - `https://id-preview--83156da2-5022-467d-8e0d-62137e129699.lovable.app`
+   - `https://83156da2-5022-467d-8e0d-62137e129699.lovableproject.com` (se publicado)
+5. Garantir que `Authorization` e `Content-Type` estejam nos cabecalhos permitidos
+6. Salvar e aguardar alguns minutos para propagacao
+
+---
+
+### Resumo das Alteracoes
+
+| Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/ExportPanel.tsx` | Trocar `lg:inline` por `xl:inline` em todos os textos de botões |
-| `src/components/ExportPanel.tsx` | Alterar container de botões para `flex gap-2` (remover `flex-col sm:flex-row`) |
-| `src/components/ExportPanel.tsx` | Adicionar Tooltips aos botões de ação |
+| `src/components/ReportViewer.tsx` | Alterar `reportServerUrl` para formato base sem `/site/{siteId}` |
+| `src/components/ReportViewer.tsx` | Refatorar `handleAjaxBeforeLoad` para usar `args.headers.push()` |
+| `src/types/boldReportsViewer.d.ts` | Adicionar tipo `headers` no `AjaxBeforeLoadEventArgs` |
 
 ---
 
-### Comportamento Esperado Após Correção
+### Diagnostico Adicional Recomendado
 
-| Largura Viewport | Layout | Botões de Formato | Botões de Ação |
-|------------------|--------|-------------------|----------------|
-| < 640px | 1 coluna | Apenas ícones | Apenas ícones + Tooltip |
-| 640px - 1024px | 1 coluna | Apenas ícones | Apenas ícones + Tooltip |
-| 1024px - 1280px | 3 colunas (painel estreito) | Apenas ícones | Apenas ícones + Tooltip |
-| >= 1280px | 3 colunas (painel com mais espaço) | Ícones + Texto | Ícones + Texto |
+Apos aplicar as correcoes, utilizar as ferramentas de desenvolvedor do navegador para:
+
+1. Localizar a requisicao para `https://service.boldreports.com/api/Viewer/PostReportAction`
+2. Verificar se o cabecalho `Authorization` esta presente em **Request Headers**
+3. Confirmar se o valor e exatamente `bearer {token}`
+4. Se ausente, revisar a funcao `handleAjaxBeforeLoad`
 
 ---
 
-### Seção Tecnica
+### Secao Tecnica
 
-**Por que `xl` e não um breakpoint customizado?**
+**Por que a Edge Function funciona mas o Viewer falha?**
 
-- O breakpoint `xl` (1280px) é o ponto onde o painel de 1/3 da largura (~426px) tem espaço suficiente para texto
-- Em `lg` (1024px), o painel tem apenas ~341px, insuficiente para botões com texto
-- Usar breakpoints nativos do Tailwind mantém consistência e evita configuração adicional
+A Edge Function faz chamadas HTTP diretas com `Authorization: Bearer ${token}`, que funciona perfeitamente. O componente Viewer, porem, dispara multiplas requisicoes AJAX internas atraves do jQuery, e a injecao de cabecalhos precisa seguir o padrao esperado pela biblioteca (via `headers.push()`).
 
-**Cálculo:**
-- Viewport 1024px: container max-width ~1024px - padding = ~992px, 1/3 = ~330px
-- Viewport 1280px: container max-width ~1280px - padding = ~1248px, 1/3 = ~416px
-- Texto "Exportar" + ícone + gap precisa de ~120px mínimo por botão, 2 botões = 240px + margins
+**Por que remover `/site/{siteId}` da URL?**
+
+O documento explica que o Viewer "anexa dinamicamente os endpoints necessarios durante o ciclo de vida do carregamento do relatorio". Se a URL ja contiver o site ID, pode haver duplicacao ou incompatibilidade de rotas.
+
+**Sobre CORS:**
+
+Se o CORS nao estiver configurado, o navegador bloqueara a resposta antes mesmo que o token seja validado, resultando em erro 401 ou erro de rede indefinido.
