@@ -1,185 +1,186 @@
 
-## Plano: Integrar Bold Reports Viewer do Zero (Seguindo Guia Oficial)
+# Plano: Pré-visualização de Excel, Word e CSV
 
-### Contexto
+## Resumo
 
-Implementação completa do Bold Reports Viewer seguindo estritamente o guia técnico fornecido, com foco na resolução do erro 401 através da correta propagação do token via `ajaxBeforeLoad`.
-
----
-
-### Fase 1: Preparação do Ambiente React (Dependências Globais)
-
-#### 1.1 Criar `src/globals.ts`
-
-O Bold Reports Viewer depende de objetos globais no `window`:
-
-```typescript
-import jquery from 'jquery';
-import React from 'react';
-import ReactDOM from 'react-dom';
-import createReactClass from 'create-react-class';
-
-window.React = React;
-window.ReactDOM = ReactDOM;
-window.createReactClass = createReactClass;
-window.$ = window.jQuery = jquery;
-```
-
-#### 1.2 Atualizar `src/main.tsx`
-
-- Importar `./globals` no topo do arquivo (antes de qualquer outro import)
-- Importar os scripts CSS do Bold Reports Viewer
+Expandir o sistema de pré-visualização existente para suportar Excel, Word e CSV, utilizando as bibliotecas `SheetJS (xlsx)` e `docx-preview`, mantendo a arquitetura unificada com o visualizador de PDF já implementado.
 
 ---
 
-### Fase 2: Criar Componente ReportViewer
-
-#### 2.1 Criar `src/components/ReportViewer.tsx`
-
-Implementar o componente seguindo as especificações do guia:
-
-**URLs de Integração (conforme guia):**
-- `reportServiceUrl`: `https://service.boldreports.com/api/Viewer` (processa layout)
-- `reportServerUrl`: `https://{site_id}.boldreports.com/reporting/api` (dados e permissões)
-
-**Propagação do Token (fix para 401):**
-```typescript
-const formatToken = (token: string) => `bearer ${token}`; // minúsculo!
-
-const onAjaxRequest = useCallback((args: any) => {
-  if (token && args.headers) {
-    // Força injeção via array headers.push
-    args.headers.push({
-      Key: 'Authorization',
-      Value: formatToken(token)
-    });
-    args.serviceAuthorizationToken = formatToken(token);
-  }
-}, [token]);
-```
-
-**Props do componente:**
-- `reportServiceUrl`: URL fixa do serviço de visualização
-- `reportServerUrl`: URL dinâmica do servidor (com siteId)
-- `serviceAuthorizationToken`: Token formatado com `bearer`
-- `reportPath`: Caminho do relatório (formato: `/Categoria/Nome`)
-- `ajaxBeforeLoad`: Handler para injeção do token
-
----
-
-### Fase 3: Criar Hook useReportViewer
-
-#### 3.1 Criar `src/hooks/useReportViewer.ts`
-
-Hook para buscar configuração do viewer via Edge Function:
-
-```typescript
-interface ViewerConfig {
-  siteId: string;
-  token: string; // JWT puro (sem prefixo)
-  reportServerUrl: string;
-}
-```
-
-- Chamar action `get-viewer-config` na Edge Function
-- Retornar configuração para o componente
-
----
-
-### Fase 4: Atualizar Edge Function
-
-#### 4.1 Adicionar action `get-viewer-config` em `supabase/functions/bold-reports/index.ts`
-
-**Resposta esperada (conforme guia):**
-```json
-{
-  "success": true,
-  "siteId": "b2044034",
-  "token": "JWT_PURO_SEM_PREFIXO",
-  "reportServerUrl": "https://b2044034.boldreports.com/reporting/api"
-}
-```
-
-O token deve ser retornado **sem** o prefixo "Bearer" - o frontend adiciona `bearer` (minúsculo).
-
----
-
-### Fase 5: Integrar na Interface
-
-#### 5.1 Atualizar `src/components/ExportPanel.tsx`
-
-- Adicionar prop `onView` para callback de visualização
-- Adicionar botão "Visualizar" com ícone `Eye`
-- O botão só aparece se `onView` for fornecido
-
-#### 5.2 Atualizar `src/pages/Index.tsx`
-
-- Importar `useReportViewer` e `ReportViewer`
-- Adicionar estados para controle do viewer:
-  - `viewerOpen`: boolean para abrir/fechar dialog
-  - `viewerParams`: parâmetros selecionados pelo usuário
-- Buscar configuração do viewer no mount
-- Passar `onView` para `ExportPanel`
-- Renderizar `ReportViewer` em um Dialog quando aberto
-
----
-
-### Fase 6: Criar Tipos TypeScript
-
-#### 6.1 Criar `src/types/boldReportsViewer.d.ts`
-
-Declarações de tipos para o componente Bold Reports e objetos globais do window.
-
----
-
-### Diagrama de Fluxo
+## Arquitetura Proposta
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                      Fluxo de Autenticação                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  1. useReportViewer → Edge Function (get-viewer-config)          │
-│                           │                                      │
-│                           ▼                                      │
-│  2. Edge Function → Bold Reports Token API (Embed Secret)        │
-│                           │                                      │
-│                           ▼                                      │
-│  3. Retorna: { siteId, token (JWT puro), reportServerUrl }       │
-│                           │                                      │
-│                           ▼                                      │
-│  4. ReportViewer recebe token                                    │
-│     - Formata como "bearer {token}" (minúsculo)                  │
-│     - Passa via serviceAuthorizationToken                        │
-│     - Injeta via ajaxBeforeLoad em TODAS requisições             │
-│                           │                                      │
-│                           ▼                                      │
-│  5. Bold Viewer faz requisições:                                 │
-│     - reportServiceUrl: layout do relatório                      │
-│     - reportServerUrl: dados e permissões                        │
-│     - Todas com header Authorization: "bearer {token}"           │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────────────────────────┐
+                    │         ExportPanel.tsx             │
+                    │   (Botão Pré-visualizar para        │
+                    │    PDF, Excel, Word, CSV)           │
+                    └───────────────┬─────────────────────┘
+                                    │
+                                    ▼
+                    ┌─────────────────────────────────────┐
+                    │      DocumentPreviewDialog.tsx      │
+                    │   (Componente unificado que         │
+                    │    detecta o formato e renderiza)   │
+                    └───────────────┬─────────────────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              │                     │                     │
+              ▼                     ▼                     ▼
+    ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+    │  PDFPreview     │  │ SpreadsheetPrev │  │   DocxPreview   │
+    │  (react-pdf)    │  │ (xlsx + table)  │  │ (docx-preview)  │
+    │                 │  │ Excel & CSV     │  │                 │
+    └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
 ---
 
-### Seção Técnica
+## Etapas de Implementação
 
-#### Arquivos a Criar:
-- `src/globals.ts` - Globais para jQuery/React
-- `src/components/ReportViewer.tsx` - Componente do viewer
-- `src/hooks/useReportViewer.ts` - Hook para buscar config
-- `src/types/boldReportsViewer.d.ts` - Tipos TypeScript
+### Etapa 1: Instalar Dependências
 
-#### Arquivos a Modificar:
-- `src/main.tsx` - Importar globals e CSS
-- `src/components/ExportPanel.tsx` - Adicionar botão Visualizar
-- `src/pages/Index.tsx` - Integrar viewer
-- `supabase/functions/bold-reports/index.ts` - Adicionar get-viewer-config
+Adicionar as bibliotecas necessárias:
+- `xlsx` - Para parsing de arquivos Excel e CSV
+- `docx-preview` - Para renderização de documentos Word
+- `jszip` - Dependência do docx-preview
 
-#### Pontos Críticos do Guia:
-1. Token com `bearer` em **minúsculo** (não `Bearer`)
-2. `reportServerUrl` sem `/site/{siteId}` no final
-3. Injeção via `args.headers.push()` no `ajaxBeforeLoad`
-4. CORS configurado no Bold Reports Cloud (já feito pelo usuário)
+### Etapa 2: Criar Componente de Preview para Planilhas
+
+**Novo arquivo:** `src/components/SpreadsheetPreview.tsx`
+
+Funcionalidades:
+- Parsear arquivos Excel (.xlsx) e CSV usando SheetJS
+- Renderizar dados em uma tabela HTML estilizada com Tailwind
+- Suporte a navegação entre abas (para Excel com múltiplas planilhas)
+- Scroll horizontal e vertical para tabelas grandes
+
+### Etapa 3: Criar Componente de Preview para Word
+
+**Novo arquivo:** `src/components/DocxPreview.tsx`
+
+Funcionalidades:
+- Renderizar documentos .docx usando docx-preview
+- Container com scroll para documentos longos
+- Preservar formatação visual do documento original
+
+### Etapa 4: Criar Dialog Unificado de Preview
+
+**Novo arquivo:** `src/components/DocumentPreviewDialog.tsx`
+
+Substituir o `PDFPreviewDialog` por um componente genérico que:
+- Aceita o formato como prop (`PDF | Excel | Word | CSV`)
+- Renderiza o componente de preview apropriado baseado no formato
+- Mantém controles de zoom (onde aplicável)
+- Botão de download unificado
+
+### Etapa 5: Atualizar o Hook useBoldReports
+
+**Arquivo:** `src/hooks/useBoldReports.ts`
+
+Modificações:
+- Generalizar `generatePreview` para aceitar qualquer formato
+- Ajustar o MIME type baseado no formato
+- Armazenar o formato atual no estado para o dialog
+
+### Etapa 6: Atualizar ExportPanel
+
+**Arquivo:** `src/components/ExportPanel.tsx`
+
+Modificações:
+- Mostrar botão "Pré-visualizar" para todos os formatos (PDF, Excel, Word, CSV)
+- Passar o formato selecionado para a função de preview
+
+### Etapa 7: Atualizar Index Page
+
+**Arquivo:** `src/pages/Index.tsx`
+
+Modificações:
+- Substituir `PDFPreviewDialog` por `DocumentPreviewDialog`
+- Passar o formato selecionado para o dialog
+
+---
+
+## Estrutura de Arquivos Final
+
+```text
+src/components/
+├── DocumentPreviewDialog.tsx  (novo - dialog unificado)
+├── SpreadsheetPreview.tsx     (novo - Excel/CSV)
+├── DocxPreview.tsx            (novo - Word)
+├── PDFPreviewDialog.tsx       (será refatorado ou removido)
+├── ExportPanel.tsx            (modificado)
+└── ...
+```
+
+---
+
+## Detalhes Técnicos
+
+### Renderização de Excel/CSV (SheetJS)
+
+```typescript
+import * as XLSX from 'xlsx';
+
+// Converter ArrayBuffer para dados de planilha
+const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+const sheetName = workbook.SheetNames[0];
+const worksheet = workbook.Sheets[sheetName];
+const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+```
+
+### Renderização de Word (docx-preview)
+
+```typescript
+import { renderAsync } from 'docx-preview';
+
+// Renderizar DOCX em um container
+await renderAsync(blob, containerRef.current, null, {
+  className: 'docx-preview',
+  inWrapper: true,
+  ignoreWidth: false,
+  ignoreHeight: false,
+});
+```
+
+### Mapeamento de MIME Types
+
+| Formato | MIME Type |
+|---------|-----------|
+| PDF | application/pdf |
+| Excel | application/vnd.openxmlformats-officedocument.spreadsheetml.sheet |
+| Word | application/vnd.openxmlformats-officedocument.wordprocessingml.document |
+| CSV | text/csv |
+
+---
+
+## Interface do Componente Unificado
+
+```typescript
+interface DocumentPreviewDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  fileUrl: string | null;  // Blob URL
+  fileBlob: Blob | null;   // Blob original (necessário para docx-preview)
+  format: ExportFormat;    // 'PDF' | 'Excel' | 'Word' | 'CSV'
+  loading: boolean;
+  onDownload: () => void;
+  documentName?: string;
+}
+```
+
+---
+
+## Consideracoes de UX
+
+1. **Loading States**: Cada tipo de preview terá seu próprio indicador de carregamento
+2. **Tratamento de Erros**: Mensagens específicas por formato se o arquivo não puder ser renderizado
+3. **Fallback**: Se a renderização falhar, oferecer opção de download direto
+4. **Responsividade**: Todos os previews funcionarão em dispositivos móveis
+
+---
+
+## Limitacoes Conhecidas
+
+- **Excel**: Formatação complexa (cores, bordas, merge cells) pode ter limitações
+- **Word**: Alguns elementos avançados (SmartArt, formas) podem não renderizar perfeitamente
+- **CSV**: Assumirá delimitador vírgula por padrão
