@@ -25,11 +25,11 @@ interface ReportViewerProps {
 // URLs do Bold Reports Cloud
 const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
 
-// CORRIGIDO: Formato Cloud centralizado COM /site/{siteId}
-// Baseado no issuer/audience do token JWT: https://cloud.boldreports.com/reporting/site/{siteId}
-// O reportServerUrl deve seguir o padrão: https://cloud.boldreports.com/reporting/api/site/{siteId}
-const getBoldReportsServerUrl = (siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
+// CORRIGIDO FASE 1: URL base SEM /site/{siteId}
+// O componente Viewer anexa dinamicamente os endpoints necessários
+// Conforme documentação: o viewer requer apenas a URL base da API
+const getBoldReportsServerUrl = (_siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/`;
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
@@ -92,25 +92,36 @@ export function ReportViewer({
     }
   }, [isOpen, token, siteId, report, reportPath, convertParameters, effectiveServerUrl]);
 
-  // Callback para interceptar requisições AJAX do viewer e injetar token de autenticação
-  // Simplificado conforme documentação oficial do Bold Reports
+  // FASE 2: Callback para interceptar requisições AJAX do viewer e injetar token
+  // Refatorado conforme documentação Bold Reports v12.2.7 - usando args.headers.push()
   const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
     console.log('[BoldReports AJAX] Action:', args?.actionName || 'N/A');
     
     if (token && args) {
-      // CORREÇÃO: Usar 'bearer' minúsculo conforme documentação oficial
       const bearerToken = `bearer ${token}`;
       
-      // Método principal: atualiza serviceAuthorizationToken
+      // Método 1: Usar args.headers.push() conforme doc v12.2.7
+      if (args.headers && Array.isArray(args.headers)) {
+        // Remover cabeçalhos de autorização existentes para evitar duplicidade
+        args.headers = args.headers.filter((h: { Key: string }) => h.Key !== 'Authorization');
+        
+        // Injetar novo token via push (formato esperado pela biblioteca)
+        args.headers.push({
+          Key: 'Authorization',
+          Value: bearerToken
+        });
+        
+        console.log('[BoldReports AJAX] ✅ Token injetado via headers.push()');
+      }
+      
+      // Método 2: serviceAuthorizationToken como fallback
       args.serviceAuthorizationToken = bearerToken;
       
-      // Método secundário: headerReq como objeto simples
+      // Método 3: headerReq como fallback adicional
       if (!args.headerReq) {
         args.headerReq = {};
       }
       args.headerReq['Authorization'] = bearerToken;
-      
-      console.log('[BoldReports AJAX] ✅ Token injetado (bearer minúsculo)');
     } else {
       console.warn('[BoldReports AJAX] ⚠️ Token não disponível');
     }
