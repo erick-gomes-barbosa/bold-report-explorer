@@ -118,7 +118,7 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
                   onClick={() => setSelectedFormat(format)}
                 >
                   <span className={isSelected ? colors.text : colors.text}>{icon}</span>
-                  <span className="hidden sm:inline">{label}</span>
+                  <span className="hidden lg:inline">{label}</span>
                 </Button>
               );
             })}
@@ -134,7 +134,7 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
                 size="lg"
               >
                 <Eye className="h-4 w-4" />
-                <span className="hidden sm:inline">Visualizar</span>
+                <span className="hidden lg:inline">Visualizar</span>
               </Button>
             )}
             
@@ -144,15 +144,15 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
               className="flex-1 gap-2"
               size="lg"
             >
-              {loading ? (
+            {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="hidden sm:inline">Exportando...</span>
+                  <span className="hidden lg:inline">Exportando...</span>
                 </>
               ) : (
                 <>
                   <Download className="h-4 w-4" />
-                  <span className="hidden sm:inline">Exportar</span>
+                  <span className="hidden lg:inline">Exportar</span>
                 </>
               )}
             </Button>
