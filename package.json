@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@boldreports/javascript-reporting-controls": "^12.2.8",
     "@boldreports/react-reporting-components": "^12.2.7",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
