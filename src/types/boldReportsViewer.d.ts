@@ -24,11 +24,12 @@ export interface BoldReportViewerInstance {
 
 // Interface para o callback ajaxBeforeLoad (documentação oficial)
 // https://help.boldreports.com/embedded-reporting/javascript-reporting/report-viewer/api-reference/events/#ajaxbeforeload
+// FASE 3: Atualizado conforme doc v12.2.7 - headers é um array de { Key, Value }
 export interface AjaxBeforeLoadEventArgs {
   reportViewerToken?: string;
   serviceAuthorizationToken?: string;
   headerReq?: Record<string, string>;
-  headers?: Record<string, string>;
+  headers?: Array<{ Key: string; Value: string }>; // v12.2.7: array para push()
   data?: string;
   actionName?: string;
 }
