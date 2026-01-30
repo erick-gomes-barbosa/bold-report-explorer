@@ -1,79 +1,185 @@
 
-## Plano: Remover Totalmente a Pré-visualização do Bold Reports
+## Plano: Integrar Bold Reports Viewer do Zero (Seguindo Guia Oficial)
 
 ### Contexto
 
-A funcionalidade de pré-visualização do Bold Reports continua apresentando erro 401 apesar das múltiplas tentativas de correção. Será removida completamente, mantendo apenas a funcionalidade de exportação que funciona via Edge Function.
+Implementação completa do Bold Reports Viewer seguindo estritamente o guia técnico fornecido, com foco na resolução do erro 401 através da correta propagação do token via `ajaxBeforeLoad`.
 
 ---
 
-### Arquivos a Serem Modificados
+### Fase 1: Preparação do Ambiente React (Dependências Globais)
 
-#### 1. Deletar `src/components/ReportViewer.tsx`
+#### 1.1 Criar `src/globals.ts`
 
-Remover completamente o componente de visualização que usa o Bold Reports Viewer.
+O Bold Reports Viewer depende de objetos globais no `window`:
 
-#### 2. Deletar `src/hooks/useReportViewer.ts`
+```typescript
+import jquery from 'jquery';
+import React from 'react';
+import ReactDOM from 'react-dom';
+import createReactClass from 'create-react-class';
 
-Remover o hook que busca configuração do viewer (siteId, token, reportServerUrl).
+window.React = React;
+window.ReactDOM = ReactDOM;
+window.createReactClass = createReactClass;
+window.$ = window.jQuery = jquery;
+```
 
-#### 3. Modificar `src/pages/Index.tsx`
+#### 1.2 Atualizar `src/main.tsx`
 
-**Remover:**
-- Import do `ReportViewer`
-- Import do `useReportViewer`
-- Estados `viewerOpen` e `viewerParams`
-- Chamada `fetchViewerConfig()` no `useEffect`
-- Função `handleView`
-- Referência a `viewerConfig` no prop `onView` do `ExportPanel`
-- Componente `<ReportViewer />` no final do JSX
-
-#### 4. Modificar `src/components/ExportPanel.tsx`
-
-**Remover:**
-- Import do ícone `Eye`
-- Prop `onView` da interface e componente
-- Função `handleView`
-- Botão de "Visualizar" no JSX
-
-#### 5. Modificar `src/main.tsx`
-
-**Remover:**
-- Imports de CSS e scripts do Bold Reports Viewer (linhas 10-14)
-- Import do `./globals` (linha 2) - não será mais necessário
-
-#### 6. Deletar `src/globals.ts`
-
-Remover arquivo de inicialização global do jQuery/React para Bold Reports.
-
-#### 7. Remover da Edge Function `supabase/functions/bold-reports/index.ts`
-
-**Remover:**
-- Ação `get-viewer-config` no switch case (será ignorada se chamada)
+- Importar `./globals` no topo do arquivo (antes de qualquer outro import)
+- Importar os scripts CSS do Bold Reports Viewer
 
 ---
 
-### Arquivos de Tipos (Limpeza Opcional)
+### Fase 2: Criar Componente ReportViewer
 
-Os seguintes arquivos podem ser mantidos caso sejam usados por outras funcionalidades:
-- `src/types/boldReportsViewer.d.ts` - pode ser removido pois era específico do viewer
+#### 2.1 Criar `src/components/ReportViewer.tsx`
+
+Implementar o componente seguindo as especificações do guia:
+
+**URLs de Integração (conforme guia):**
+- `reportServiceUrl`: `https://service.boldreports.com/api/Viewer` (processa layout)
+- `reportServerUrl`: `https://{site_id}.boldreports.com/reporting/api` (dados e permissões)
+
+**Propagação do Token (fix para 401):**
+```typescript
+const formatToken = (token: string) => `bearer ${token}`; // minúsculo!
+
+const onAjaxRequest = useCallback((args: any) => {
+  if (token && args.headers) {
+    // Força injeção via array headers.push
+    args.headers.push({
+      Key: 'Authorization',
+      Value: formatToken(token)
+    });
+    args.serviceAuthorizationToken = formatToken(token);
+  }
+}, [token]);
+```
+
+**Props do componente:**
+- `reportServiceUrl`: URL fixa do serviço de visualização
+- `reportServerUrl`: URL dinâmica do servidor (com siteId)
+- `serviceAuthorizationToken`: Token formatado com `bearer`
+- `reportPath`: Caminho do relatório (formato: `/Categoria/Nome`)
+- `ajaxBeforeLoad`: Handler para injeção do token
 
 ---
 
-### Resultado Esperado
+### Fase 3: Criar Hook useReportViewer
 
-- A aplicação mantém a listagem de relatórios
-- A funcionalidade de exportação (PDF, Excel, Word, CSV) continua funcionando
-- O botão "Visualizar" desaparece do painel de exportação
-- Nenhum erro relacionado ao Bold Reports Viewer aparecerá no console
+#### 3.1 Criar `src/hooks/useReportViewer.ts`
+
+Hook para buscar configuração do viewer via Edge Function:
+
+```typescript
+interface ViewerConfig {
+  siteId: string;
+  token: string; // JWT puro (sem prefixo)
+  reportServerUrl: string;
+}
+```
+
+- Chamar action `get-viewer-config` na Edge Function
+- Retornar configuração para o componente
+
+---
+
+### Fase 4: Atualizar Edge Function
+
+#### 4.1 Adicionar action `get-viewer-config` em `supabase/functions/bold-reports/index.ts`
+
+**Resposta esperada (conforme guia):**
+```json
+{
+  "success": true,
+  "siteId": "b2044034",
+  "token": "JWT_PURO_SEM_PREFIXO",
+  "reportServerUrl": "https://b2044034.boldreports.com/reporting/api"
+}
+```
+
+O token deve ser retornado **sem** o prefixo "Bearer" - o frontend adiciona `bearer` (minúsculo).
+
+---
+
+### Fase 5: Integrar na Interface
+
+#### 5.1 Atualizar `src/components/ExportPanel.tsx`
+
+- Adicionar prop `onView` para callback de visualização
+- Adicionar botão "Visualizar" com ícone `Eye`
+- O botão só aparece se `onView` for fornecido
+
+#### 5.2 Atualizar `src/pages/Index.tsx`
+
+- Importar `useReportViewer` e `ReportViewer`
+- Adicionar estados para controle do viewer:
+  - `viewerOpen`: boolean para abrir/fechar dialog
+  - `viewerParams`: parâmetros selecionados pelo usuário
+- Buscar configuração do viewer no mount
+- Passar `onView` para `ExportPanel`
+- Renderizar `ReportViewer` em um Dialog quando aberto
+
+---
+
+### Fase 6: Criar Tipos TypeScript
+
+#### 6.1 Criar `src/types/boldReportsViewer.d.ts`
+
+Declarações de tipos para o componente Bold Reports e objetos globais do window.
+
+---
+
+### Diagrama de Fluxo
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                      Fluxo de Autenticação                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. useReportViewer → Edge Function (get-viewer-config)          │
+│                           │                                      │
+│                           ▼                                      │
+│  2. Edge Function → Bold Reports Token API (Embed Secret)        │
+│                           │                                      │
+│                           ▼                                      │
+│  3. Retorna: { siteId, token (JWT puro), reportServerUrl }       │
+│                           │                                      │
+│                           ▼                                      │
+│  4. ReportViewer recebe token                                    │
+│     - Formata como "bearer {token}" (minúsculo)                  │
+│     - Passa via serviceAuthorizationToken                        │
+│     - Injeta via ajaxBeforeLoad em TODAS requisições             │
+│                           │                                      │
+│                           ▼                                      │
+│  5. Bold Viewer faz requisições:                                 │
+│     - reportServiceUrl: layout do relatório                      │
+│     - reportServerUrl: dados e permissões                        │
+│     - Todas com header Authorization: "bearer {token}"           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ### Seção Técnica
 
-**Dependências que podem ser removidas do `package.json` (opcional, para limpeza futura):**
-- `@boldreports/react-reporting-components`
-- `jquery`
-- `create-react-class`
+#### Arquivos a Criar:
+- `src/globals.ts` - Globais para jQuery/React
+- `src/components/ReportViewer.tsx` - Componente do viewer
+- `src/hooks/useReportViewer.ts` - Hook para buscar config
+- `src/types/boldReportsViewer.d.ts` - Tipos TypeScript
 
-Porém, como a exportação pode usar partes dessas dependências internamente, recomendo não removê-las agora para evitar quebrar a funcionalidade de exportação.
+#### Arquivos a Modificar:
+- `src/main.tsx` - Importar globals e CSS
+- `src/components/ExportPanel.tsx` - Adicionar botão Visualizar
+- `src/pages/Index.tsx` - Integrar viewer
+- `supabase/functions/bold-reports/index.ts` - Adicionar get-viewer-config
+
+#### Pontos Críticos do Guia:
+1. Token com `bearer` em **minúsculo** (não `Bearer`)
+2. `reportServerUrl` sem `/site/{siteId}` no final
+3. Injeção via `args.headers.push()` no `ajaxBeforeLoad`
+4. CORS configurado no Bold Reports Cloud (já feito pelo usuário)
