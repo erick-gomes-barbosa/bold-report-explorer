@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -8,38 +8,37 @@ interface DocxPreviewProps {
 }
 
 export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerReady, setContainerReady] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [renderLoading, setRenderLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const renderAttemptedRef = useRef(false);
+  const [isRendered, setIsRendered] = useState(false);
+  const isMountedRef = useRef(true);
 
-  // Callback ref to detect when container is mounted
-  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
-    containerRef.current = node;
-    if (node) {
-      setContainerReady(true);
-    }
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
+    // Reset rendered state when blob changes
+    setIsRendered(false);
+  }, [fileBlob]);
+
+  useEffect(() => {
     const renderDocument = async () => {
-      // Wait for all conditions to be met
-      if (!fileBlob || !containerRef.current || loading || !containerReady) {
-        console.log('[DocxPreview] Waiting for conditions:', {
-          hasBlob: !!fileBlob,
-          hasContainer: !!containerRef.current,
-          loading,
-          containerReady
-        });
+      if (!fileBlob || loading || isRendered) {
         return;
       }
 
-      // Prevent double render
-      if (renderAttemptedRef.current) {
+      // Use a small delay to ensure DOM is ready after dialog animation
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      if (!isMountedRef.current || !containerRef.current) {
+        console.log('[DocxPreview] Component not mounted or container not ready');
         return;
       }
-      renderAttemptedRef.current = true;
 
       setRenderLoading(true);
       setRenderError(null);
@@ -50,15 +49,16 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
         // Clear previous content safely
         container.innerHTML = '';
 
-        // Dynamically import docx-preview to avoid SSR issues
+        // Dynamically import docx-preview
         const docxPreview = await import('docx-preview');
         
-        console.log('[DocxPreview] Rendering document, blob size:', fileBlob.size, 'type:', fileBlob.type);
-        
-        // Double-check container is still valid after async import
-        if (!containerRef.current) {
-          throw new Error('Container was unmounted during import');
+        // Check if still mounted after async import
+        if (!isMountedRef.current) {
+          console.log('[DocxPreview] Component unmounted during import, aborting');
+          return;
         }
+
+        console.log('[DocxPreview] Rendering document, blob size:', fileBlob.size);
         
         await docxPreview.renderAsync(fileBlob, container, undefined, {
           className: 'docx-preview-content',
@@ -77,23 +77,25 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
           renderEndnotes: true,
         });
         
-        console.log('[DocxPreview] Document rendered successfully');
+        if (isMountedRef.current) {
+          console.log('[DocxPreview] Document rendered successfully');
+          setIsRendered(true);
+        }
       } catch (err) {
         console.error('[DocxPreview] Error rendering DOCX:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-        setRenderError(`Erro ao renderizar documento: ${errorMessage}`);
+        if (isMountedRef.current) {
+          const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+          setRenderError(`Erro ao renderizar documento: ${errorMessage}`);
+        }
       } finally {
-        setRenderLoading(false);
+        if (isMountedRef.current) {
+          setRenderLoading(false);
+        }
       }
     };
 
     renderDocument();
-  }, [fileBlob, loading, containerReady]);
-
-  // Reset render attempt when blob changes
-  useEffect(() => {
-    renderAttemptedRef.current = false;
-  }, [fileBlob]);
+  }, [fileBlob, loading, isRendered]);
 
   // Reset state when no file
   useEffect(() => {
@@ -102,7 +104,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
         containerRef.current.innerHTML = '';
       }
       setRenderError(null);
-      renderAttemptedRef.current = false;
+      setIsRendered(false);
     }
   }, [fileBlob]);
 
@@ -143,7 +145,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
     <ScrollArea className="h-full">
       <div className="p-4 flex justify-center">
         <div
-          ref={setContainerRef}
+          ref={containerRef}
           className="docx-container bg-white shadow-lg max-w-full"
           style={{
             minHeight: '500px',
