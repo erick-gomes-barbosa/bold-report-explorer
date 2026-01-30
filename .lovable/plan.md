@@ -1,137 +1,161 @@
 
-## Plano de Integração Definitiva: Bold Reports Viewer
 
-### Diagnóstico Completo
+## Plano de Correção Definitiva: Bold Reports Viewer - Erro 401
 
-Após pesquisa aprofundada na documentação oficial do Bold Reports, identifiquei os seguintes problemas na implementação atual:
+### Diagnóstico Completo Baseado na Documentação Oficial
+
+Após pesquisa aprofundada na documentação oficial do Bold Reports, identifiquei **múltiplos problemas** que podem causar o erro 401.
 
 ---
 
 ### 1. Análise do Token JWT Fornecido
 
-O token que você forneceu contém as seguintes informações críticas:
+O novo token fornecido contém:
 
 | Claim | Valor |
 |-------|-------|
 | **email** | `erick.barbosa@baymetrics.com.br` |
+| **issued_date** | `1769771327` (30 Jan 2025) |
+| **exp** | `1773705600` (válido até ~15 Jan 2026) |
 | **issuer (iss)** | `https://cloud.boldreports.com/reporting/site/b2044034` |
 | **audience (aud)** | `https://cloud.boldreports.com/reporting/site/b2044034` |
-| **exp** | Token válido até Janeiro de 2026 |
-
-**Implicação:** O token foi emitido para o site `b2044034` no cloud centralizado, portanto o `reportServerUrl` deve seguir o padrão do issuer/audience.
 
 ---
 
-### 2. Problema Identificado: Formato Incorreto da `reportServerUrl`
+### 2. Problema #1: Formato da URL - Análise da Documentação
 
-A documentação oficial mostra dois cenários:
+A documentação oficial do Bold Reports mostra **dois cenários diferentes** para Cloud:
 
-#### Enterprise Reporting Server
+#### Cenário A: Cloud com Subdomínio Dedicado
 ```javascript
-reportServiceUrl: "https://on-premise-demo.boldreports.com/reporting/reportservice/api/Viewer"
-reportServerUrl: "https://on-premise-demo.boldreports.com/reporting/api/site/site1"
+// Quando você tem: https://acmecorp.boldreports.com
+reportServerUrl: 'https://acmecorp.boldreports.com/reporting/api/'
 ```
 
-#### Cloud Reporting Server (com subdomínio dedicado)
+#### Cenário B: Enterprise/On-Premise com Site ID
 ```javascript
-reportServiceUrl: "https://service.boldreports.com/api/Viewer"
-reportServerUrl: "https://acmecorp.boldreports.com/reporting/api/"
+// Quando você tem: https://on-premise-demo.boldreports.com
+reportServerUrl: 'https://on-premise-demo.boldreports.com/reporting/api/site/site1'
 ```
 
-#### Seu Caso: Cloud Centralizado (sem subdomínio dedicado)
-A sua conta usa o formato `cloud.boldreports.com/reporting/site/{siteId}`, que é um **híbrido** entre os dois. Baseado no issuer/audience do token JWT, o formato correto é:
+#### Seu Caso: Cloud Centralizado (cloud.boldreports.com)
+Você usa o **cloud centralizado** sem subdomínio dedicado. O issuer do token JWT indica que o formato deve incluir o site ID:
 
 ```javascript
-reportServiceUrl: "https://service.boldreports.com/api/Viewer"
-reportServerUrl: "https://cloud.boldreports.com/reporting/api/site/b2044034"
+// Formato esperado baseado no issuer do token
+reportServerUrl: 'https://cloud.boldreports.com/reporting/api/site/b2044034'
 ```
+
+**Isso confirma que a correção anterior estava correta!**
 
 ---
 
-### 3. Segundo Problema: Token Dinâmico vs Estático
+### 3. Problema #2: Case Sensitivity do "Bearer" Token
 
-Atualmente a edge function gera tokens via `password_grant`. No entanto, você forneceu um token estático válido até 2026. Vamos configurar para usar este token estático, que é mais confiável.
+A documentação oficial usa consistentemente **`bearer` minúsculo**:
+
+```javascript
+serviceAuthorizationToken = {'bearer <server token>'}
+```
+
+No código atual existe uma **inconsistência**:
+
+| Local | Formato | Status |
+|-------|---------|--------|
+| `serviceAuthorizationToken` prop | `bearer ${token}` | OK |
+| `ajaxBeforeLoad` handler | `Bearer ${token}` | INCONSISTENTE |
+
+Embora o RFC 6750 defina "Bearer" como case-insensitive, alguns servidores podem ser mais restritivos. Vamos padronizar para `bearer` (minúsculo) conforme a documentação.
 
 ---
 
-### Mudanças a Implementar
+### 4. Problema #3: Formato de Injeção de Headers no ajaxBeforeLoad
 
-#### Fase 1: Atualizar Secrets
+A documentação do evento `ajaxBeforeLoad` mostra que os headers podem ser modificados via:
+- `args.headerReq` - Objeto de headers
+- `args.headers` - Array de headers
+- `args.serviceAuthorizationToken` - Token direto
 
-| Secret | Valor Atual | Novo Valor |
-|--------|-------------|------------|
-| `BOLD_TOKEN` | (não configurado) | Token JWT fornecido |
-| `BOLD_EMAIL` | (valor antigo) | `erick.barbosa@baymetrics.com.br` |
+O código atual usa um formato de array com `{ Key, Value }`, mas a documentação sugere um formato mais simples. Vou simplificar a implementação.
 
-#### Fase 2: Atualizar Edge Function (`supabase/functions/bold-reports/index.ts`)
+---
 
-Corrigir o formato da `reportServerUrl`:
+### 5. Problema #4: Atualizar o Token Estático
 
-**De:**
+O token anterior expirou ou foi substituído. Precisamos atualizar o `BOLD_TOKEN` secret com o novo token fornecido.
+
+---
+
+### Alterações a Implementar
+
+#### Fase 1: Atualizar Secret BOLD_TOKEN
+
+Substituir o token armazenado pelo novo token JWT fornecido.
+
+#### Fase 2: Corrigir `src/components/ReportViewer.tsx`
+
+**Alteração 1** - Padronizar Bearer para minúsculo no `ajaxBeforeLoad`:
+
 ```typescript
-reportServerUrl: 'https://cloud.boldreports.com/reporting/api/'
+// Linha ~104 - DE:
+const bearerToken = `Bearer ${token}`;
+
+// PARA:
+const bearerToken = `bearer ${token}`;
 ```
 
-**Para:**
+**Alteração 2** - Simplificar injeção de headers no `ajaxBeforeLoad`:
+
+A implementação atual é complexa demais. Vamos simplificar seguindo o padrão da documentação:
+
+```typescript
+const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
+  console.log('[BoldReports AJAX] Action:', args?.actionName);
+  
+  if (token && args) {
+    const bearerToken = `bearer ${token}`;
+    
+    // Método principal: atualiza serviceAuthorizationToken
+    args.serviceAuthorizationToken = bearerToken;
+    
+    // Método secundário: headerReq como objeto
+    if (!args.headerReq) {
+      args.headerReq = {};
+    }
+    args.headerReq['Authorization'] = bearerToken;
+    
+    console.log('[BoldReports AJAX] Token injetado');
+  }
+}, [token]);
+```
+
+#### Fase 3: Verificar Edge Function (já está correta)
+
+A edge function já retorna o formato correto:
 ```typescript
 reportServerUrl: `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`
 ```
 
-Isso alinha a URL com o issuer/audience do token JWT.
+---
 
-#### Fase 3: Validar Configuração do Viewer (`src/components/ReportViewer.tsx`)
+### Verificação de Permissões (Ponto #3 do Usuário)
 
-Garantir que:
-1. O `serviceAuthorizationToken` usa o formato `bearer {token}` (minúsculo)
-2. O `reportServerUrl` é passado corretamente
-3. O `ajaxBeforeLoad` injeta o token nos headers corretos
+Conforme mencionado pelo usuário, o erro 401 "Access Denied" também pode ocorrer se o usuário não tiver permissão de leitura no relatório. Para verificar:
+
+1. Fazer login no Bold Reports Server com conta Admin
+2. Navegar até o relatório que está falhando
+3. Verificar "Manage Permissions"
+4. Garantir que `erick.barbosa@baymetrics.com.br` tenha permissão `Read`
 
 ---
 
-### Detalhes Técnicos
+### Resumo das Alterações
 
-#### Arquivo: `supabase/functions/bold-reports/index.ts`
-
-Alterar a ação `get-viewer-config`:
-
-```typescript
-case 'get-viewer-config':
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      siteId: BOLD_SITE_ID,
-      token: accessToken,
-      // CORRIGIDO: Usar formato com site ID para cloud centralizado
-      // Alinhado com issuer/audience do token JWT
-      reportServerUrl: `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-```
-
-#### Arquivo: `src/components/ReportViewer.tsx`
-
-Atualizar a constante de fallback:
-
-```typescript
-// CORRIGIDO: Formato Cloud centralizado COM /site/{siteId}
-// Baseado no issuer/audience do token JWT
-const getBoldReportsServerUrl = (siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
-```
-
-E na renderização do componente:
-
-```typescript
-<BoldReportViewerComponent
-  id={viewerContainerId}
-  reportServiceUrl={BOLD_REPORTS_SERVICE_URL}
-  reportServerUrl={effectiveServerUrl || getBoldReportsServerUrl(siteId)}
-  serviceAuthorizationToken={`bearer ${token}`}
-  reportPath={reportPath}
-  // ... outras props
-/>
-```
+| Arquivo/Configuração | Alteração |
+|---------------------|-----------|
+| Secret `BOLD_TOKEN` | Atualizar com o novo token JWT fornecido |
+| `ReportViewer.tsx` | Padronizar `bearer` minúsculo no ajaxBeforeLoad |
+| `ReportViewer.tsx` | Simplificar lógica de injeção de headers |
 
 ---
 
@@ -141,40 +165,16 @@ E na renderização do componente:
 |-------------|-------|
 | `reportServiceUrl` | `https://service.boldreports.com/api/Viewer` |
 | `reportServerUrl` | `https://cloud.boldreports.com/reporting/api/site/b2044034` |
-| `serviceAuthorizationToken` | `bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
-| `reportPath` | `/{CategoryName}/{ReportName}` |
+| `serviceAuthorizationToken` | `bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` (novo token) |
 
 ---
 
-### Sequência de Implementação
+### Diagnóstico Adicional Recomendado
 
-1. **Adicionar o secret `BOLD_TOKEN`** com o token JWT fornecido
-2. **Atualizar o secret `BOLD_EMAIL`** para `erick.barbosa@baymetrics.com.br`
-3. **Atualizar a edge function** para usar o formato correto da `reportServerUrl`
-4. **Atualizar o ReportViewer.tsx** com o fallback correto
-5. **Deploy e teste**
+Se após as correções o erro 401 persistir, os próximos passos seriam:
 
----
+1. **Verificar logs do Bold Reports Server** - O servidor pode ter logs mais detalhados sobre o motivo da rejeição
+2. **Testar token via Postman** - Fazer uma chamada direta à API do Bold Reports para confirmar que o token funciona
+3. **Verificar CORS no Bold Reports** - Garantir que a origem da aplicação está permitida
+4. **Verificar validade do token** - Confirmar que o token não expirou (exp: 1773705600 = ~15 Jan 2026)
 
-### Por Que Esta Solução Resolve o 401
-
-O erro 401 ocorre porque:
-1. O token JWT tem `issuer` = `https://cloud.boldreports.com/reporting/site/b2044034`
-2. O viewer estava enviando requisições para `https://cloud.boldreports.com/reporting/api/` (sem o `/site/{siteId}`)
-3. O serviço Bold Reports rejeita porque a URL não corresponde ao issuer do token
-
-Com a correção:
-1. O `reportServerUrl` será `https://cloud.boldreports.com/reporting/api/site/b2044034`
-2. Isso corresponde ao padrão do issuer do token
-3. O serviço Bold Reports validará o token corretamente
-
----
-
-### Resumo das Alterações
-
-| Arquivo/Configuração | Alteração |
-|---------------------|-----------|
-| Secret `BOLD_TOKEN` | Adicionar token JWT estático fornecido |
-| Secret `BOLD_EMAIL` | Atualizar para `erick.barbosa@baymetrics.com.br` |
-| `bold-reports/index.ts` | Corrigir `reportServerUrl` para incluir `/site/${siteId}` |
-| `ReportViewer.tsx` | Atualizar fallback da URL e garantir consistência |
