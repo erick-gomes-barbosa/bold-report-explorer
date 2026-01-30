@@ -11,6 +11,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
   const [renderLoading, setRenderLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [isRendered, setIsRendered] = useState(false);
+  const [contentEmpty, setContentEmpty] = useState(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
   useEffect(() => {
     // Reset rendered state when blob changes
     setIsRendered(false);
+    setContentEmpty(false);
   }, [fileBlob]);
 
   useEffect(() => {
@@ -31,8 +33,12 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
         return;
       }
 
-      // Use a small delay to ensure DOM is ready after dialog animation
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Use double requestAnimationFrame to ensure DOM is ready after dialog animation
+      await new Promise<void>(resolve => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
 
       if (!isMountedRef.current || !containerRef.current) {
         console.log('[DocxPreview] Component not mounted or container not ready');
@@ -41,12 +47,18 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
 
       setRenderLoading(true);
       setRenderError(null);
+      setContentEmpty(false);
 
       const container = containerRef.current;
 
       try {
         // Clear previous content safely
         container.innerHTML = '';
+
+        // Convert Blob to ArrayBuffer for better compatibility
+        console.log('[DocxPreview] Converting Blob to ArrayBuffer, blob size:', fileBlob.size, 'type:', fileBlob.type);
+        const arrayBuffer = await fileBlob.arrayBuffer();
+        console.log('[DocxPreview] ArrayBuffer created, byteLength:', arrayBuffer.byteLength);
 
         // Dynamically import docx-preview
         const docxPreview = await import('docx-preview');
@@ -57,16 +69,16 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
           return;
         }
 
-        console.log('[DocxPreview] Rendering document, blob size:', fileBlob.size);
+        console.log('[DocxPreview] Rendering document with ArrayBuffer...');
         
-        await docxPreview.renderAsync(fileBlob, container, undefined, {
+        await docxPreview.renderAsync(arrayBuffer, container, undefined, {
           className: 'docx-preview-content',
           inWrapper: true,
           ignoreWidth: false,
           ignoreHeight: false,
           ignoreFonts: false,
           breakPages: true,
-          ignoreLastRenderedPageBreak: true,
+          ignoreLastRenderedPageBreak: false,
           experimental: false,
           trimXmlDeclaration: true,
           useBase64URL: true,
@@ -74,11 +86,31 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
           renderFooters: true,
           renderFootnotes: true,
           renderEndnotes: true,
+          debug: true,
         });
         
         if (isMountedRef.current) {
-          console.log('[DocxPreview] Document rendered successfully, container children:', container.children.length);
+          console.log('[DocxPreview] Document rendered successfully');
+          console.log('[DocxPreview] Container children:', container.children.length);
+          console.log('[DocxPreview] Container innerHTML length:', container.innerHTML.length);
+          console.log('[DocxPreview] Has .docx-wrapper:', !!container.querySelector('.docx-wrapper'));
+          console.log('[DocxPreview] Has section.docx:', !!container.querySelector('section.docx'));
+          
           setIsRendered(true);
+          
+          // Check if content is actually visible after a short delay
+          setTimeout(() => {
+            if (isMountedRef.current && container) {
+              const textContent = container.textContent?.trim() || '';
+              console.log('[DocxPreview] Text content length:', textContent.length);
+              console.log('[DocxPreview] Text content preview:', textContent.substring(0, 100));
+              
+              if (textContent.length === 0 && container.innerHTML.length < 500) {
+                console.log('[DocxPreview] Content appears empty, showing fallback');
+                setContentEmpty(true);
+              }
+            }
+          }, 500);
         }
       } catch (err) {
         console.error('[DocxPreview] Error rendering DOCX:', err);
@@ -104,6 +136,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
       }
       setRenderError(null);
       setIsRendered(false);
+      setContentEmpty(false);
     }
   }, [fileBlob]);
 
@@ -153,19 +186,38 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
         />
       </div>
       
-      {/* Styles for docx-preview */}
+      {/* Fallback message when content appears empty */}
+      {contentEmpty && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/90">
+          <div className="flex flex-col items-center gap-3 text-center p-4">
+            <AlertCircle className="h-8 w-8 text-amber-500" />
+            <p className="text-sm font-medium">Documento renderizado, mas o conteúdo não está visível</p>
+            <p className="text-xs text-muted-foreground">
+              Isso pode ocorrer com alguns formatos. Use o botão "Baixar" para visualizar o arquivo.
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* Enhanced styles for docx-preview with forced visibility */}
       <style>{`
         .docx-container {
           background: white;
+          position: relative;
         }
         .docx-container .docx-wrapper {
           background: white !important;
           padding: 20px;
+          min-height: 100%;
         }
         .docx-container .docx-wrapper > section.docx {
           box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
           margin-bottom: 20px;
           background: white;
+          min-height: 200px;
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
         }
         .docx-container table {
           border-collapse: collapse;
@@ -173,6 +225,26 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
         .docx-container td, .docx-container th {
           border: 1px solid #ddd;
           padding: 4px 8px;
+        }
+        /* Force text visibility */
+        .docx-container p,
+        .docx-container span,
+        .docx-container div,
+        .docx-container h1,
+        .docx-container h2,
+        .docx-container h3,
+        .docx-container h4,
+        .docx-container h5,
+        .docx-container h6,
+        .docx-container li,
+        .docx-container td,
+        .docx-container th {
+          color: #000 !important;
+        }
+        /* Ensure proper rendering */
+        .docx-container .docx-wrapper * {
+          visibility: visible !important;
+          opacity: 1 !important;
         }
       `}</style>
     </div>
