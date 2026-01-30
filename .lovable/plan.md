@@ -1,93 +1,79 @@
 
-## Plano de Correção - Erro 401 Bold Reports (Fase 3 - Concluída)
+## Plano: Remover Totalmente a Pré-visualização do Bold Reports
 
 ### Contexto
 
-Aplicadas as correções do guia de integração oficial do Bold Reports.
+A funcionalidade de pré-visualização do Bold Reports continua apresentando erro 401 apesar das múltiplas tentativas de correção. Será removida completamente, mantendo apenas a funcionalidade de exportação que funciona via Edge Function.
 
 ---
 
-### Correções Aplicadas
+### Arquivos a Serem Modificados
 
-#### Correção 1: Formato de URL com Subdomínio (Edge Function)
+#### 1. Deletar `src/components/ReportViewer.tsx`
 
-**Arquivo:** `supabase/functions/bold-reports/index.ts`
+Remover completamente o componente de visualização que usa o Bold Reports Viewer.
 
-**Antes:**
-```typescript
-reportServerUrl: `https://cloud.boldreports.com/reporting/api/`
-```
+#### 2. Deletar `src/hooks/useReportViewer.ts`
 
-**Depois:**
-```typescript
-reportServerUrl: `https://${BOLD_SITE_ID}.boldreports.com/reporting/api`
-```
+Remover o hook que busca configuração do viewer (siteId, token, reportServerUrl).
 
----
+#### 3. Modificar `src/pages/Index.tsx`
 
-#### Correção 2: Formato de URL com Subdomínio (ReportViewer)
+**Remover:**
+- Import do `ReportViewer`
+- Import do `useReportViewer`
+- Estados `viewerOpen` e `viewerParams`
+- Chamada `fetchViewerConfig()` no `useEffect`
+- Função `handleView`
+- Referência a `viewerConfig` no prop `onView` do `ExportPanel`
+- Componente `<ReportViewer />` no final do JSX
 
-**Arquivo:** `src/components/ReportViewer.tsx`
+#### 4. Modificar `src/components/ExportPanel.tsx`
 
-**Antes:**
-```typescript
-const getBoldReportsServerUrl = (_siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/`;
-```
+**Remover:**
+- Import do ícone `Eye`
+- Prop `onView` da interface e componente
+- Função `handleView`
+- Botão de "Visualizar" no JSX
 
-**Depois:**
-```typescript
-const getBoldReportsServerUrl = (siteId: string) => 
-  `https://${siteId}.boldreports.com/reporting/api`;
-```
+#### 5. Modificar `src/main.tsx`
 
----
+**Remover:**
+- Imports de CSS e scripts do Bold Reports Viewer (linhas 10-14)
+- Import do `./globals` (linha 2) - não será mais necessário
 
-#### Correção 3: Inicialização do Array headers no ajaxBeforeLoad
+#### 6. Deletar `src/globals.ts`
 
-**Arquivo:** `src/components/ReportViewer.tsx`
+Remover arquivo de inicialização global do jQuery/React para Bold Reports.
 
-**Antes:**
-```typescript
-if (args.headers && Array.isArray(args.headers)) {
-  // código...
-}
-```
+#### 7. Remover da Edge Function `supabase/functions/bold-reports/index.ts`
 
-**Depois:**
-```typescript
-// Inicializar args.headers como array vazio se não existir
-if (!args.headers) {
-  args.headers = [];
-}
-// Remover duplicatas e adicionar o token
-args.headers = args.headers.filter((h) => h.Key !== 'Authorization');
-args.headers.push({ Key: 'Authorization', Value: bearerToken });
-```
+**Remover:**
+- Ação `get-viewer-config` no switch case (será ignorada se chamada)
 
 ---
 
-### Configuração CORS (Bold Reports Cloud)
+### Arquivos de Tipos (Limpeza Opcional)
 
-O usuário já configurou as seguintes origens no painel Bold Reports Cloud:
-
-- `https://83156da2-5022-467d-8e0d-62137e129699.lovableproject.com`
-- `https://id-preview--83156da2-5022-467d-8e0d-62137e129699.lovable.app`
+Os seguintes arquivos podem ser mantidos caso sejam usados por outras funcionalidades:
+- `src/types/boldReportsViewer.d.ts` - pode ser removido pois era específico do viewer
 
 ---
 
-### Verificação
+### Resultado Esperado
 
-Após o deploy da Edge Function, o usuário deve:
-
-1. **Recarregar a página** (Ctrl+Shift+R / Cmd+Shift+R)
-2. **Testar visualização de um relatório**
-3. **Verificar no console** se o `reportServerUrl` agora é `https://b2044034.boldreports.com/reporting/api`
+- A aplicação mantém a listagem de relatórios
+- A funcionalidade de exportação (PDF, Excel, Word, CSV) continua funcionando
+- O botão "Visualizar" desaparece do painel de exportação
+- Nenhum erro relacionado ao Bold Reports Viewer aparecerá no console
 
 ---
 
-### Fluxo Esperado
+### Seção Técnica
 
-1. Edge Function retorna: `reportServerUrl: "https://b2044034.boldreports.com/reporting/api"`
-2. Viewer usa esta URL para as requisições internas
-3. O token é injetado via `args.headers.push()` em todas as requisições AJAX
+**Dependências que podem ser removidas do `package.json` (opcional, para limpeza futura):**
+- `@boldreports/react-reporting-components`
+- `jquery`
+- `create-react-class`
+
+Porém, como a exportação pode usar partes dessas dependências internamente, recomendo não removê-las agora para evitar quebrar a funcionalidade de exportação.
