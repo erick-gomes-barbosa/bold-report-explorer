@@ -308,6 +308,21 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
 
+      case 'get-viewer-config':
+        // Return viewer configuration with raw JWT token (no prefix)
+        // Frontend will add lowercase 'bearer' prefix as required
+        const viewerToken = await getAccessToken();
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            siteId: BOLD_SITE_ID,
+            token: viewerToken, // Raw JWT without prefix
+            reportServerUrl: `https://${BOLD_SITE_ID}.boldreports.com/reporting/api`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+
       case 'export-report':
         // API Cloud v5.0 endpoint: POST /v5.0/reports/export
         // This endpoint requires FilterParameters to be a JSON string with arrays

@@ -4,6 +4,7 @@ export interface BoldReport {
   Description?: string;
   CategoryId?: string;
   CategoryName?: string;
+  Path?: string;
   CreatedById?: number;
   CreatedByDisplayName?: string;
   CreatedDate?: string;
