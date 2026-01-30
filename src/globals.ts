@@ -70,6 +70,7 @@ if (typeof jq.now !== 'function') {
 }
 
 // Expõe as dependências no escopo global (window) para os scripts base do Bold Reports
+// Nota: O tipo Window.BoldReportViewerComponent é declarado em src/types/boldReportsViewer.d.ts
 declare global {
   interface Window {
     React: typeof React;
@@ -77,48 +78,7 @@ declare global {
     ReactDOM: typeof ReactDOM;
     $: typeof jquery;
     jQuery: typeof jquery;
-    BoldReportViewerComponent: React.ComponentType<BoldReportViewerProps>;
   }
-}
-
-export interface BoldReportViewerProps {
-  id: string;
-  reportServiceUrl: string;
-  reportServerUrl?: string;
-  serviceAuthorizationToken?: string;
-  reportPath?: string;
-  parameters?: Array<{
-    name: string;
-    labels?: string[];
-    values: string[];
-    nullable?: boolean;
-  }>;
-  locale?: string;
-  toolbarSettings?: {
-    showToolbar?: boolean;
-    items?: string[];
-  };
-  exportSettings?: {
-    exportOptions?: number;
-    excelFormat?: string;
-    wordFormat?: string;
-    pptFormat?: string;
-  };
-  printMode?: boolean;
-  printOption?: string;
-  processingMode?: string;
-  enablePageCache?: boolean;
-  renderMode?: string;
-  dataSources?: Array<{
-    name: string;
-    value: unknown[];
-  }>;
-  authorizationHeaderValue?: string;
-  reportLoaded?: () => void;
-  reportError?: (args: { errorCode: string; message: string }) => void;
-  exportItemClick?: (args: { exportType: string }) => void;
-  exportProgressChanged?: (args: { progress: number }) => void;
-  ajaxBeforeLoad?: (args: { headers: Record<string, string> }) => void;
 }
 
 window.React = React;
