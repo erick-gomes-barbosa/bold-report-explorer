@@ -250,18 +250,6 @@ serve(async (req) => {
     let response;
 
     switch (action) {
-      case 'get-viewer-config':
-        // FASE 3: Formato subdomínio conforme guia de integração
-        // URL: https://{siteid}.boldreports.com/reporting/api
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            siteId: BOLD_SITE_ID,
-            token: accessToken,
-            reportServerUrl: `https://${BOLD_SITE_ID}.boldreports.com/reporting/api`
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
 
       case 'list-reports':
         const listUrl = `${BASE_URL}/v1.0/items?itemType=Report`;

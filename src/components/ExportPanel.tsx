@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileSpreadsheet, FileText, FileType, Loader2, Eye } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, FileType, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -11,7 +11,6 @@ interface ExportPanelProps {
   parameters: ReportParameter[];
   loading: boolean;
   onExport: (format: ExportFormat, params: Record<string, string | string[]>) => void;
-  onView?: (params: Record<string, string | string[]>) => void;
 }
 
 // Format-specific colors that blend with the earthy palette
@@ -55,16 +54,12 @@ const exportFormats: { format: ExportFormat; label: string; icon: React.ReactNod
   { format: 'CSV', label: 'CSV', icon: <FileSpreadsheet className="h-4 w-4" /> },
 ];
 
-export function ExportPanel({ report, parameters, loading, onExport, onView }: ExportPanelProps) {
+export function ExportPanel({ report, parameters, loading, onExport }: ExportPanelProps) {
   const [parameterValues, setParameterValues] = useState<Record<string, string | string[]>>({});
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('PDF');
 
   const handleExport = () => {
     onExport(selectedFormat, parameterValues);
-  };
-
-  const handleView = () => {
-    onView?.(parameterValues);
   };
 
   return (
@@ -133,57 +128,33 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
             })}
           </div>
 
-          <div className="flex gap-2">
-            {onView && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      onClick={handleView}
-                      disabled={loading}
-                      variant="outline"
-                      className="flex-1 gap-2 min-w-0"
-                      size="lg"
-                    >
-                      <Eye className="h-4 w-4 shrink-0" />
-                      <span className="hidden xl:inline">Visualizar</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="xl:hidden">
-                    <p>Visualizar</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    onClick={handleExport} 
-                    disabled={loading}
-                    className="flex-1 gap-2 min-w-0"
-                    size="lg"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                        <span className="hidden xl:inline">Exportando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4 shrink-0" />
-                        <span className="hidden xl:inline">Exportar</span>
-                      </>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="xl:hidden">
-                  <p>{loading ? 'Exportando...' : 'Exportar'}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  onClick={handleExport} 
+                  disabled={loading}
+                  className="w-full gap-2"
+                  size="lg"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      <span className="hidden xl:inline">Exportando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 shrink-0" />
+                      <span className="hidden xl:inline">Exportar</span>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="xl:hidden">
+                <p>{loading ? 'Exportando...' : 'Exportar'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </CardContent>
       </Card>
     </div>
