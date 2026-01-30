@@ -51,6 +51,16 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   return blob;
 }
 
+// MIME type mapping for different formats
+const mimeTypes: Record<ExportFormat, string> = {
+  PDF: 'application/pdf',
+  Excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  Word: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  CSV: 'text/csv',
+  HTML: 'text/html',
+  PPT: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
 export function useBoldReports() {
   const [reports, setReports] = useState<BoldReport[]>([]);
   const [parameters, setParameters] = useState<ReportParameter[]>([]);
@@ -58,6 +68,8 @@ export function useBoldReports() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewFormat, setPreviewFormat] = useState<ExportFormat>('PDF');
   
   // Store the current preview blob for download
   const previewBlobRef = useRef<{ blob: Blob; filename: string } | null>(null);
@@ -111,16 +123,19 @@ export function useBoldReports() {
 
   const generatePreview = useCallback(async (
     reportId: string,
+    format: ExportFormat,
     parameterValues: Record<string, string | string[]>
   ): Promise<boolean> => {
     setPreviewLoading(true);
     setError(null);
+    setPreviewFormat(format);
     
     // Clean up previous preview URL
     if (previewUrl) {
       window.URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
+    setPreviewBlob(null);
     previewBlobRef.current = null;
     
     try {
@@ -138,7 +153,7 @@ export function useBoldReports() {
         body: { 
           action: 'export-report', 
           reportId, 
-          format: 'PDF',
+          format,
           parameters: normalizedParams 
         },
       });
@@ -146,24 +161,27 @@ export function useBoldReports() {
       if (fnError) throw fnError;
       
       if (data?.success && data?.data) {
-        const mimeType = data.contentType || 'application/pdf';
+        const mimeType = data.contentType || mimeTypes[format] || 'application/octet-stream';
         const blob = base64ToBlob(data.data, mimeType);
         
         // Generate filename
         const timestamp = new Date().getTime();
-        const filename = `relatorio_${timestamp}.pdf`;
+        const extension = getFileExtension(format);
+        const filename = `relatorio_${timestamp}.${extension}`;
         
         // Store for later download
         previewBlobRef.current = { blob, filename };
+        setPreviewBlob(blob);
         
-        // Create URL for preview
+        // Create URL for preview (useful for PDF)
         const url = window.URL.createObjectURL(blob);
         setPreviewUrl(url);
         
         console.log('Preview gerado:', {
           filename,
           size: blob.size,
-          type: mimeType
+          type: mimeType,
+          format
         });
         
         return true;
@@ -204,6 +222,7 @@ export function useBoldReports() {
       window.URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
+    setPreviewBlob(null);
     previewBlobRef.current = null;
   }, [previewUrl]);
 
@@ -294,6 +313,8 @@ export function useBoldReports() {
     previewLoading,
     error,
     previewUrl,
+    previewBlob,
+    previewFormat,
     fetchReports,
     fetchParameters,
     exportReport,

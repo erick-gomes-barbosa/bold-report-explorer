@@ -12,7 +12,9 @@ interface ExportPanelProps {
   loading: boolean;
   previewLoading: boolean;
   onExport: (format: ExportFormat, params: Record<string, string | string[]>) => void;
-  onPreview: (params: Record<string, string | string[]>) => void;
+  onPreview: (format: ExportFormat, params: Record<string, string | string[]>) => void;
+  selectedFormat: ExportFormat;
+  onFormatChange: (format: ExportFormat) => void;
 }
 
 // Format-specific colors that blend with the earthy palette
@@ -56,16 +58,24 @@ const exportFormats: { format: ExportFormat; label: string; icon: React.ReactNod
   { format: 'CSV', label: 'CSV', icon: <FileSpreadsheet className="h-4 w-4" /> },
 ];
 
-export function ExportPanel({ report, parameters, loading, previewLoading, onExport, onPreview }: ExportPanelProps) {
+export function ExportPanel({ 
+  report, 
+  parameters, 
+  loading, 
+  previewLoading, 
+  onExport, 
+  onPreview,
+  selectedFormat,
+  onFormatChange,
+}: ExportPanelProps) {
   const [parameterValues, setParameterValues] = useState<Record<string, string | string[]>>({});
-  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('PDF');
 
   const handleExport = () => {
     onExport(selectedFormat, parameterValues);
   };
 
   const handlePreview = () => {
-    onPreview(parameterValues);
+    onPreview(selectedFormat, parameterValues);
   };
 
   const isLoading = loading || previewLoading;
@@ -122,7 +132,7 @@ export function ExportPanel({ report, parameters, loading, previewLoading, onExp
                             ? `${colors.bg} ${colors.text} ${colors.border} ring-2 ring-offset-1 ring-current` 
                             : `hover:${colors.bg} hover:${colors.text} hover:${colors.border}`
                         }`}
-                        onClick={() => setSelectedFormat(format)}
+                        onClick={() => onFormatChange(format)}
                         disabled={isLoading}
                       >
                         <span className={isSelected ? colors.text : colors.text}>{icon}</span>
@@ -139,13 +149,13 @@ export function ExportPanel({ report, parameters, loading, previewLoading, onExp
           </div>
 
           <div className="flex gap-2">
-            {/* Preview Button - only for PDF */}
-            {selectedFormat === 'PDF' && (
+            {/* Preview Button - for PDF, Excel, Word, CSV */}
+            {['PDF', 'Excel', 'Word', 'CSV'].includes(selectedFormat) && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
-                      id="btn-preview-pdf"
+                      id="btn-preview-document"
                       onClick={handlePreview} 
                       disabled={isLoading}
                       variant="outline"
@@ -166,7 +176,7 @@ export function ExportPanel({ report, parameters, loading, previewLoading, onExp
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent className="xl:hidden">
-                    <p>{previewLoading ? 'Gerando...' : 'Pré-visualizar PDF'}</p>
+                    <p>{previewLoading ? 'Gerando...' : `Pré-visualizar ${selectedFormat}`}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -180,7 +190,7 @@ export function ExportPanel({ report, parameters, loading, previewLoading, onExp
                     id="btn-export-report"
                     onClick={handleExport} 
                     disabled={isLoading}
-                    className={`gap-2 ${selectedFormat === 'PDF' ? 'flex-1' : 'w-full'}`}
+                    className={`gap-2 ${['PDF', 'Excel', 'Word', 'CSV'].includes(selectedFormat) ? 'flex-1' : 'w-full'}`}
                     size="lg"
                   >
                     {loading ? (

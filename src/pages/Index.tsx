@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ReportCard } from '@/components/ReportCard';
 import { ExportPanel } from '@/components/ExportPanel';
 import { CategoryFilter } from '@/components/CategoryFilter';
-import { PDFPreviewDialog } from '@/components/PDFPreviewDialog';
+import { DocumentPreviewDialog } from '@/components/DocumentPreviewDialog';
 import { useBoldReports } from '@/hooks/useBoldReports';
 import { toast } from 'sonner';
 import type { BoldReport, ExportFormat } from '@/types/boldReports';
@@ -19,6 +19,8 @@ const Index = () => {
     previewLoading,
     error,
     previewUrl,
+    previewBlob,
+    previewFormat,
     fetchReports, 
     fetchParameters, 
     exportReport,
@@ -31,6 +33,7 @@ const Index = () => {
   const [selectedReport, setSelectedReport] = useState<BoldReport | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('PDF');
   const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
@@ -54,10 +57,10 @@ const Index = () => {
     }
   };
 
-  const handlePreview = async (params: Record<string, string | string[]>) => {
+  const handlePreview = async (format: ExportFormat, params: Record<string, string | string[]>) => {
     if (!selectedReport) return;
     
-    const success = await generatePreview(selectedReport.Id, params);
+    const success = await generatePreview(selectedReport.Id, format, params);
     if (success) {
       setPreviewOpen(true);
     } else {
@@ -195,6 +198,8 @@ const Index = () => {
                   previewLoading={previewLoading}
                   onExport={handleExport}
                   onPreview={handlePreview}
+                  selectedFormat={selectedFormat}
+                  onFormatChange={setSelectedFormat}
                 />
               ) : (
                 <div className="bg-muted/50 rounded-lg p-8 text-center border border-dashed border-border">
@@ -209,14 +214,16 @@ const Index = () => {
         </div>
       </main>
 
-      {/* PDF Preview Dialog */}
-      <PDFPreviewDialog
+      {/* Document Preview Dialog */}
+      <DocumentPreviewDialog
         open={previewOpen}
         onOpenChange={handlePreviewClose}
-        pdfUrl={previewUrl}
+        fileUrl={previewUrl}
+        fileBlob={previewBlob}
+        format={previewFormat}
         loading={previewLoading}
         onDownload={handleDownloadFromPreview}
-        reportName={selectedReport?.Name}
+        documentName={selectedReport?.Name}
       />
     </div>
   );
