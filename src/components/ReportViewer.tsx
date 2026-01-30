@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2 } from 'lucide-react';
 
-// Import Bold Reports Viewer dynamically
-let BoldReportViewerComponent: React.ComponentType<any> | null = null;
+// Declare jQuery and Bold Reports globals
+declare global {
+  interface Window {
+    $: any;
+    jQuery: any;
+    ej: any;
+  }
+}
 
 interface ReportViewerProps {
   open: boolean;
@@ -17,7 +23,6 @@ interface ReportViewerProps {
 
 // Format token with lowercase 'bearer' as required by Bold Reports
 const formatToken = (token: string): string => {
-  // Remove any existing prefix and add lowercase 'bearer'
   const cleanToken = token.replace(/^bearer\s+/i, '').trim();
   return `bearer ${cleanToken}`;
 };
@@ -32,52 +37,9 @@ export function ReportViewer({
   parameters = {},
 }: ReportViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [viewerReady, setViewerReady] = useState(false);
-
-  // Load Bold Reports component dynamically
-  useEffect(() => {
-    if (open && !BoldReportViewerComponent) {
-      // @ts-ignore - Module loaded dynamically
-      import('@boldreports/react-reporting-components')
-        .then((module: any) => {
-          BoldReportViewerComponent = module.BoldReportViewerComponent;
-          setViewerReady(true);
-          setIsLoading(false);
-        })
-        .catch((err: Error) => {
-          console.error('[ReportViewer] Erro ao carregar componente:', err);
-          setIsLoading(false);
-        });
-    } else if (open && BoldReportViewerComponent) {
-      setViewerReady(true);
-      setIsLoading(false);
-    }
-  }, [open]);
-
-  // CRITICAL: Inject token into EVERY AJAX request via ajaxBeforeLoad
-  // This is the fix for 401 errors - the token must be propagated to all sub-requests
-  const onAjaxRequest = useCallback(
-    (args: any) => {
-      if (token && args.headers) {
-        const bearerToken = formatToken(token);
-        
-        // Force inject via headers.push (array format per Bold Reports docs)
-        args.headers.push({
-          Key: 'Authorization',
-          Value: bearerToken,
-        });
-        
-        // Also set serviceAuthorizationToken for good measure
-        args.serviceAuthorizationToken = bearerToken;
-
-        console.log('[ReportViewer] ajaxBeforeLoad - Token injected:', {
-          url: args.url,
-          tokenPrefix: bearerToken.substring(0, 20) + '...',
-        });
-      }
-    },
-    [token]
-  );
+  const [error, setError] = useState<string | null>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const viewerInitialized = useRef(false);
 
   // Convert parameters to Bold Reports format
   const formattedParameters = Object.entries(parameters).map(([name, value]) => ({
@@ -85,19 +47,97 @@ export function ReportViewer({
     values: Array.isArray(value) ? value : [value],
   }));
 
-  // URLs per the official guide:
-  // - reportServiceUrl: processes report layout (fixed URL)
-  // - reportServerUrl: manages data and permissions (dynamic with siteId)
+  // URLs per the official guide
   const reportServiceUrl = 'https://service.boldreports.com/api/Viewer';
   const reportServerUrl = `https://${siteId}.boldreports.com/reporting/api`;
 
-  console.log('[ReportViewer] Configuração:', {
-    reportPath,
-    reportServiceUrl,
-    reportServerUrl,
-    tokenFormat: formatToken(token).substring(0, 25) + '...',
-    parametersCount: formattedParameters.length,
-  });
+  // Initialize viewer using jQuery widget
+  useEffect(() => {
+    if (!open || !viewerRef.current || viewerInitialized.current) return;
+
+    const $ = window.$;
+    if (!$ || !$.fn.boldReportViewer) {
+      console.error('[ReportViewer] Bold Reports não carregado');
+      setError('Bold Reports não está disponível');
+      setIsLoading(false);
+      return;
+    }
+
+    const bearerToken = formatToken(token);
+
+    console.log('[ReportViewer] Inicializando viewer:', {
+      reportPath,
+      reportServiceUrl,
+      reportServerUrl,
+      tokenPrefix: bearerToken.substring(0, 25) + '...',
+    });
+
+    try {
+      $(viewerRef.current).boldReportViewer({
+        reportServiceUrl,
+        reportServerUrl,
+        serviceAuthorizationToken: bearerToken,
+        reportPath,
+        parameters: formattedParameters.length > 0 ? formattedParameters : undefined,
+        locale: 'pt-BR',
+        toolbarSettings: {
+          showToolbar: true,
+          items: [
+            window.ej?.ReportViewer?.ToolbarItems?.Print,
+            window.ej?.ReportViewer?.ToolbarItems?.Export,
+            window.ej?.ReportViewer?.ToolbarItems?.Refresh,
+            window.ej?.ReportViewer?.ToolbarItems?.ZoomIn,
+            window.ej?.ReportViewer?.ToolbarItems?.ZoomOut,
+            window.ej?.ReportViewer?.ToolbarItems?.FitToPage,
+            window.ej?.ReportViewer?.ToolbarItems?.PageNavigation,
+          ].filter(Boolean),
+        },
+        // CRITICAL: Inject token into EVERY AJAX request
+        ajaxBeforeLoad: (args: any) => {
+          if (token && args.headers) {
+            args.headers.push({
+              Key: 'Authorization',
+              Value: bearerToken,
+            });
+            args.serviceAuthorizationToken = bearerToken;
+            console.log('[ReportViewer] ajaxBeforeLoad - Token injected');
+          }
+        },
+        renderingBegin: () => {
+          console.log('[ReportViewer] Renderização iniciada');
+          setIsLoading(false);
+        },
+        renderingComplete: () => {
+          console.log('[ReportViewer] Renderização completa');
+          setIsLoading(false);
+        },
+        reportError: (args: any) => {
+          console.error('[ReportViewer] Erro:', args);
+          setError(args.message || 'Erro ao carregar relatório');
+          setIsLoading(false);
+        },
+      });
+
+      viewerInitialized.current = true;
+    } catch (err) {
+      console.error('[ReportViewer] Erro ao inicializar:', err);
+      setError('Erro ao inicializar o visualizador');
+      setIsLoading(false);
+    }
+  }, [open, token, siteId, reportPath, formattedParameters, reportServiceUrl, reportServerUrl]);
+
+  // Cleanup on close
+  useEffect(() => {
+    if (!open && viewerRef.current && viewerInitialized.current) {
+      const $ = window.$;
+      if ($ && $(viewerRef.current).data('boldReportViewer')) {
+        $(viewerRef.current).boldReportViewer('destroy');
+      }
+      viewerInitialized.current = false;
+      setIsLoading(true);
+      setError(null);
+    }
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -106,41 +146,25 @@ export function ReportViewer({
           <DialogTitle>{reportName}</DialogTitle>
         </DialogHeader>
         
-        <div className="flex-1 p-4 pt-2 overflow-hidden">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full">
+        <div className="flex-1 p-4 pt-2 overflow-hidden relative">
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Carregando visualizador...</span>
+              <span className="ml-2 text-muted-foreground">Carregando relatório...</span>
             </div>
-          ) : viewerReady && BoldReportViewerComponent ? (
-            <div className="h-full w-full" style={{ minHeight: '600px' }}>
-              <BoldReportViewerComponent
-                id="bold-report-viewer"
-                reportServiceUrl={reportServiceUrl}
-                reportServerUrl={reportServerUrl}
-                serviceAuthorizationToken={formatToken(token)}
-                reportPath={reportPath}
-                parameters={formattedParameters.length > 0 ? formattedParameters : undefined}
-                ajaxBeforeLoad={onAjaxRequest}
-                locale="pt-BR"
-                toolbarSettings={{
-                  showToolbar: true,
-                  items: [
-                    'Print',
-                    'Export',
-                    'Refresh',
-                    'ZoomIn',
-                    'ZoomOut',
-                    'FitToPage',
-                    'PageNavigation',
-                  ],
-                }}
-              />
+          )}
+          
+          {error ? (
+            <div className="flex items-center justify-center h-full text-destructive">
+              {error}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Erro ao carregar o visualizador de relatórios
-            </div>
+            <div 
+              ref={viewerRef} 
+              id="bold-report-viewer" 
+              className="h-full w-full"
+              style={{ minHeight: '600px' }}
+            />
           )}
         </div>
       </DialogContent>
