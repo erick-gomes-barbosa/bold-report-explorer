@@ -56,9 +56,15 @@ export function ReportViewer({
     if (!open || !viewerRef.current || viewerInitialized.current) return;
 
     const $ = window.$;
+    console.log('[ReportViewer] Verificando disponibilidade:', {
+      jQueryAvailable: !!$,
+      boldReportViewerFn: !!($?.fn?.boldReportViewer),
+      ejAvailable: !!window.ej,
+    });
+
     if (!$ || !$.fn.boldReportViewer) {
       console.error('[ReportViewer] Bold Reports não carregado');
-      setError('Bold Reports não está disponível');
+      setError('Bold Reports não está disponível. Tente recarregar a página.');
       setIsLoading(false);
       return;
     }
