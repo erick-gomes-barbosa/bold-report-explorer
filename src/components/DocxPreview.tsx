@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface DocxPreviewProps {
   fileBlob: Blob | null;
@@ -33,7 +32,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
       }
 
       // Use a small delay to ensure DOM is ready after dialog animation
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       if (!isMountedRef.current || !containerRef.current) {
         console.log('[DocxPreview] Component not mounted or container not ready');
@@ -78,7 +77,7 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
         });
         
         if (isMountedRef.current) {
-          console.log('[DocxPreview] Document rendered successfully');
+          console.log('[DocxPreview] Document rendered successfully, container children:', container.children.length);
           setIsRendered(true);
         }
       } catch (err) {
@@ -142,13 +141,14 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-4 flex justify-center">
+    <div className="h-full overflow-auto">
+      <div className="p-4 flex justify-center min-h-full">
         <div
           ref={containerRef}
           className="docx-container bg-white shadow-lg max-w-full"
           style={{
             minHeight: '500px',
+            minWidth: '600px',
           }}
         />
       </div>
@@ -175,6 +175,6 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
           padding: 4px 8px;
         }
       `}</style>
-    </ScrollArea>
+    </div>
   );
 }
