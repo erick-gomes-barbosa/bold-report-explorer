@@ -93,50 +93,27 @@ export function ReportViewer({
   }, [isOpen, token, siteId, report, reportPath, convertParameters, effectiveServerUrl]);
 
   // Callback para interceptar requisições AJAX do viewer e injetar token de autenticação
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleAjaxBeforeLoad = useCallback((args: any) => {
-    console.group('[BoldReports AJAX] Requisição Interceptada');
+  // Simplificado conforme documentação oficial do Bold Reports
+  const handleAjaxBeforeLoad = useCallback((args: AjaxBeforeLoadEventArgs) => {
     console.log('[BoldReports AJAX] Action:', args?.actionName || 'N/A');
-    console.log('[BoldReports AJAX] Args completo:', JSON.stringify(args, null, 2));
     
-    // Injeta o token de autorização nos headers da requisição
     if (token && args) {
-      const bearerToken = `Bearer ${token}`;
+      // CORREÇÃO: Usar 'bearer' minúsculo conforme documentação oficial
+      const bearerToken = `bearer ${token}`;
       
-      // Inicializa headers se não existir
-      if (!args.headers) {
-        args.headers = [];
+      // Método principal: atualiza serviceAuthorizationToken
+      args.serviceAuthorizationToken = bearerToken;
+      
+      // Método secundário: headerReq como objeto simples
+      if (!args.headerReq) {
+        args.headerReq = {};
       }
+      args.headerReq['Authorization'] = bearerToken;
       
-      // Formato array: remove duplicatas e adiciona novo header
-      if (Array.isArray(args.headers)) {
-        // Remove header Authorization existente para evitar duplicatas
-        args.headers = args.headers.filter(
-          (h: any) => h?.Key?.toLowerCase() !== 'authorization'
-        );
-        // Adiciona novo header no formato { Key, Value }
-        args.headers.push({ Key: 'Authorization', Value: bearerToken });
-        console.log('[BoldReports AJAX] ✅ Token injetado via headers array');
-      }
-      
-      // Formato headerReq (se existir como objeto)
-      if (args.headerReq && typeof args.headerReq === 'object') {
-        args.headerReq['Authorization'] = bearerToken;
-        console.log('[BoldReports AJAX] ✅ Token injetado via headerReq');
-      }
-      
-      // Atualiza serviceAuthorizationToken se disponível
-      if ('serviceAuthorizationToken' in args) {
-        args.serviceAuthorizationToken = bearerToken;
-        console.log('[BoldReports AJAX] ✅ serviceAuthorizationToken atualizado');
-      }
-      
-      console.log('[BoldReports AJAX] Token injetado com sucesso');
+      console.log('[BoldReports AJAX] ✅ Token injetado (bearer minúsculo)');
     } else {
-      console.warn('[BoldReports AJAX] ⚠️ Token não disponível para injeção');
+      console.warn('[BoldReports AJAX] ⚠️ Token não disponível');
     }
-    
-    console.groupEnd();
   }, [token]);
 
   // FASE 3: Callback para capturar respostas de sucesso
