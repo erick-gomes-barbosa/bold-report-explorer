@@ -25,16 +25,27 @@ const FORMAT_MAPPING: Record<string, { extension: string; mimeType: string }> = 
 // Cache for access token
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
+// Remove 'bearer ' or 'Bearer ' prefix if present, returns raw JWT
+function extractRawToken(token: string): string {
+  const lowerToken = token.toLowerCase();
+  if (lowerToken.startsWith('bearer ')) {
+    return token.substring(7).trim();
+  }
+  return token.trim();
+}
+
 async function getAccessToken(): Promise<string> {
   console.group('[BoldReports Edge] Obtendo token de acesso');
   
   // If we have a static token configured, use it directly
   if (BOLD_TOKEN) {
+    // Extract raw JWT (remove 'bearer ' prefix if user included it in the secret)
+    const rawToken = extractRawToken(BOLD_TOKEN);
     console.log('[BoldReports Edge] Token source: BOLD_TOKEN (estático)');
-    console.log('[BoldReports Edge] Token length:', BOLD_TOKEN.length);
-    console.log('[BoldReports Edge] Token preview:', BOLD_TOKEN.substring(0, 50) + '...');
+    console.log('[BoldReports Edge] Raw token length:', rawToken.length);
+    console.log('[BoldReports Edge] Raw token preview:', rawToken.substring(0, 50) + '...');
     console.groupEnd();
-    return BOLD_TOKEN;
+    return rawToken;
   }
 
   // Otherwise, try to generate token via email/password
