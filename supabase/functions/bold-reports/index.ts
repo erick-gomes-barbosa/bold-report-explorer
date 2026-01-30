@@ -251,14 +251,14 @@ serve(async (req) => {
 
     switch (action) {
       case 'get-viewer-config':
-        // FASE 2 CORRIGIDA: URL base SEM /site/{siteId}
-        // O componente Viewer anexa dinamicamente os endpoints necessários
+        // FASE 3: Formato subdomínio conforme guia de integração
+        // URL: https://{siteid}.boldreports.com/reporting/api
         return new Response(
           JSON.stringify({ 
             success: true, 
             siteId: BOLD_SITE_ID,
             token: accessToken,
-            reportServerUrl: `https://cloud.boldreports.com/reporting/api/`
+            reportServerUrl: `https://${BOLD_SITE_ID}.boldreports.com/reporting/api`
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

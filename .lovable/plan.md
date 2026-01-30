@@ -1,92 +1,93 @@
 
-## Plano de Correção - Erro 401 Bold Reports (Fase 2)
+## Plano de Correção - Erro 401 Bold Reports (Fase 3 - Concluída)
 
 ### Contexto
 
-O erro 401 persiste porque a correção da URL do reportServerUrl não foi aplicada corretamente. A Edge Function ainda está retornando a URL completa com `/site/{siteId}`, mas o documento PDF analisado especifica que o componente Viewer requer apenas a URL base da API.
+Aplicadas as correções do guia de integração oficial do Bold Reports.
 
 ---
 
-### Correção 1: Ajustar reportServerUrl na Edge Function
+### Correções Aplicadas
+
+#### Correção 1: Formato de URL com Subdomínio (Edge Function)
 
 **Arquivo:** `supabase/functions/bold-reports/index.ts`
 
-**Problema:** A action `get-viewer-config` retorna a URL completa com `/site/{siteId}`, mas o Viewer espera a URL base e anexa os endpoints dinamicamente.
-
-**De (linhas 256-265):**
+**Antes:**
 ```typescript
-case 'get-viewer-config':
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      siteId: BOLD_SITE_ID,
-      token: accessToken,
-      reportServerUrl: `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+reportServerUrl: `https://cloud.boldreports.com/reporting/api/`
 ```
 
-**Para:**
+**Depois:**
 ```typescript
-case 'get-viewer-config':
-  // FASE 1 CORRIGIDA: URL base SEM /site/{siteId}
-  // O componente Viewer anexa dinamicamente os endpoints necessarios
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      siteId: BOLD_SITE_ID,
-      token: accessToken,
-      reportServerUrl: `https://cloud.boldreports.com/reporting/api/`
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+reportServerUrl: `https://${BOLD_SITE_ID}.boldreports.com/reporting/api`
 ```
 
 ---
 
-### Correção 2: Priorizar função local no ReportViewer (Fallback robusto)
+#### Correção 2: Formato de URL com Subdomínio (ReportViewer)
 
 **Arquivo:** `src/components/ReportViewer.tsx`
 
-**Problema:** O componente usa `reportServerUrl` da prop (que vem da API) mesmo quando a função local `getBoldReportsServerUrl` já está corrigida.
-
-**De (linha 73):**
+**Antes:**
 ```typescript
-const effectiveServerUrl = reportServerUrl || getBoldReportsServerUrl(siteId);
+const getBoldReportsServerUrl = (_siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/`;
 ```
 
-**Para:**
+**Depois:**
 ```typescript
-// FASE 1: Sempre usar URL base SEM /site/{siteId}
-// Ignorar prop reportServerUrl se ela contiver /site/ (formato antigo)
-const effectiveServerUrl = getBoldReportsServerUrl(siteId);
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://${siteId}.boldreports.com/reporting/api`;
 ```
-
-Isso garante que mesmo se a Edge Function retornar a URL antiga (cache), o componente usará o formato correto.
 
 ---
 
-### Após aplicar as correções
+#### Correção 3: Inicialização do Array headers no ajaxBeforeLoad
 
-O usuário deve:
+**Arquivo:** `src/components/ReportViewer.tsx`
 
-1. **Recarregar a página** (Ctrl+Shift+R / Cmd+Shift+R) para limpar cache
-2. **Testar novamente** a visualização de um relatório
-3. **Verificar no console** se o `reportServerUrl` agora é `https://cloud.boldreports.com/reporting/api/` (sem `/site/b2044034`)
+**Antes:**
+```typescript
+if (args.headers && Array.isArray(args.headers)) {
+  // código...
+}
+```
+
+**Depois:**
+```typescript
+// Inicializar args.headers como array vazio se não existir
+if (!args.headers) {
+  args.headers = [];
+}
+// Remover duplicatas e adicionar o token
+args.headers = args.headers.filter((h) => h.Key !== 'Authorization');
+args.headers.push({ Key: 'Authorization', Value: bearerToken });
+```
 
 ---
 
-### Seção Técnica
+### Configuração CORS (Bold Reports Cloud)
 
-**Por que a URL base?**
+O usuário já configurou as seguintes origens no painel Bold Reports Cloud:
 
-O documento PDF analisa que o componente Bold Reports Viewer:
-- Recebe a URL base da API como `reportServerUrl`
-- Anexa dinamicamente endpoints como `/site/{siteId}/v5.0/...` durante as requisições internas
-- Se a URL já contiver `/site/{siteId}`, pode haver duplicação ou rotas inválidas
+- `https://83156da2-5022-467d-8e0d-62137e129699.lovableproject.com`
+- `https://id-preview--83156da2-5022-467d-8e0d-62137e129699.lovable.app`
 
-**Fluxo esperado após correção:**
-1. Edge Function retorna: `reportServerUrl: "https://cloud.boldreports.com/reporting/api/"`
-2. Viewer anexa internamente: `/site/b2044034/v5.0/viewer/PostReportAction`
-3. Requisição final: `https://cloud.boldreports.com/reporting/api/site/b2044034/v5.0/viewer/PostReportAction`
+---
+
+### Verificação
+
+Após o deploy da Edge Function, o usuário deve:
+
+1. **Recarregar a página** (Ctrl+Shift+R / Cmd+Shift+R)
+2. **Testar visualização de um relatório**
+3. **Verificar no console** se o `reportServerUrl` agora é `https://b2044034.boldreports.com/reporting/api`
+
+---
+
+### Fluxo Esperado
+
+1. Edge Function retorna: `reportServerUrl: "https://b2044034.boldreports.com/reporting/api"`
+2. Viewer usa esta URL para as requisições internas
+3. O token é injetado via `args.headers.push()` em todas as requisições AJAX
