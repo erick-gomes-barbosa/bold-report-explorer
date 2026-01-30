@@ -113,6 +113,7 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
+                        id={`btn-format-${format.toLowerCase()}`}
                         variant="outline"
                         size="sm"
                         className={`justify-center gap-1.5 transition-all ${
@@ -141,6 +142,7 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
+                      id="btn-view-report"
                       onClick={handleView} 
                       disabled={loading}
                       variant="outline"
@@ -162,6 +164,7 @@ export function ExportPanel({ report, parameters, loading, onExport, onView }: E
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button 
+                    id="btn-export-report"
                     onClick={handleExport} 
                     disabled={loading}
                     className={`gap-2 ${onView ? 'flex-1' : 'w-full'}`}
