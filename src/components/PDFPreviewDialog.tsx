@@ -5,7 +5,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 interface PDFPreviewDialogProps {
   open: boolean;
@@ -26,7 +28,12 @@ export function PDFPreviewDialog({
 }: PDFPreviewDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0" hideCloseButton>
+        <VisuallyHidden>
+          <DialogDescription>
+            Pré-visualização do relatório PDF
+          </DialogDescription>
+        </VisuallyHidden>
         <DialogHeader className="px-6 py-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-lg font-medium">
