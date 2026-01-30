@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -9,6 +10,7 @@ const BOLD_SITE_ID = Deno.env.get('BOLD_SITE_ID');
 const BOLD_TOKEN = Deno.env.get('BOLD_TOKEN');
 const BOLD_EMAIL = Deno.env.get('BOLD_EMAIL');
 const BOLD_PASSWORD = Deno.env.get('BOLD_PASSWORD');
+const BOLD_EMBED_SECRET = Deno.env.get('BOLD_EMBED_SECRET');
 const BASE_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`;
 const TOKEN_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/token`;
 
@@ -34,27 +36,107 @@ function extractRawToken(token: string): string {
   return token.trim();
 }
 
+// Generate HMACSHA256 signature for Embed Secret authentication
+async function generateEmbedSignature(message: string, secretKey: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secretKey);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  // Convert ArrayBuffer to base64 using btoa
+  const bytes = new Uint8Array(signature);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Generate token using Embed Secret (recommended approach)
+async function getTokenViaEmbedSecret(): Promise<string> {
+  console.group('[BoldReports Edge] Gerando token via Embed Secret');
+  
+  if (!BOLD_EMBED_SECRET || !BOLD_EMAIL) {
+    console.error('[BoldReports Edge] BOLD_EMBED_SECRET ou BOLD_EMAIL não configurado');
+    console.groupEnd();
+    throw new Error('BOLD_EMBED_SECRET and BOLD_EMAIL are required for embed_secret authentication');
+  }
+  
+  const nonce = crypto.randomUUID();
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  
+  // Build the message to sign (must be lowercase)
+  const embedMessage = `embed_nonce=${nonce}&user_email=${BOLD_EMAIL}&timestamp=${timestamp}`.toLowerCase();
+  
+  console.log('[BoldReports Edge] Embed message:', embedMessage);
+  console.log('[BoldReports Edge] Nonce:', nonce);
+  console.log('[BoldReports Edge] Timestamp:', timestamp);
+  
+  // Generate HMACSHA256 signature
+  const signature = await generateEmbedSignature(embedMessage, BOLD_EMBED_SECRET);
+  console.log('[BoldReports Edge] Signature generated:', signature.substring(0, 30) + '...');
+  
+  // Make token request
+  const formData = new URLSearchParams();
+  formData.append('grant_type', 'embed_secret');
+  formData.append('username', BOLD_EMAIL);
+  formData.append('embed_nonce', nonce);
+  formData.append('embed_signature', signature);
+  formData.append('timestamp', timestamp);
+  
+  console.log('[BoldReports Edge] Token URL:', TOKEN_URL);
+  
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: formData.toString(),
+  });
+  
+  const responseText = await response.text();
+  console.log('[BoldReports Edge] Token response status:', response.status);
+  
+  if (!response.ok) {
+    console.error('[BoldReports Edge] Token error response:', responseText.substring(0, 300));
+    console.groupEnd();
+    throw new Error(`Failed to get access token via embed_secret: ${responseText}`);
+  }
+  
+  const tokenData = JSON.parse(responseText);
+  
+  if (tokenData.error) {
+    console.error('[BoldReports Edge] Token API error:', tokenData.error, tokenData.error_description);
+    console.groupEnd();
+    throw new Error(`Embed secret auth failed: ${tokenData.error_description || tokenData.error}`);
+  }
+  
+  // Cache token with expiration (subtract 5 minutes for safety)
+  const expiresIn = tokenData.expires_in || 3600;
+  cachedToken = {
+    token: tokenData.access_token,
+    expiresAt: Date.now() + (expiresIn - 300) * 1000,
+  };
+  
+  console.log('[BoldReports Edge] ✅ Token gerado via Embed Secret');
+  console.log('[BoldReports Edge] Token expiry:', new Date(cachedToken.expiresAt).toISOString());
+  console.log('[BoldReports Edge] Token preview:', tokenData.access_token.substring(0, 50) + '...');
+  console.groupEnd();
+  
+  return tokenData.access_token;
+}
+
 async function getAccessToken(): Promise<string> {
   console.group('[BoldReports Edge] Obtendo token de acesso');
   
-  // If we have a static token configured, use it directly
-  if (BOLD_TOKEN) {
-    // Extract raw JWT (remove 'bearer ' prefix if user included it in the secret)
-    const rawToken = extractRawToken(BOLD_TOKEN);
-    console.log('[BoldReports Edge] Token source: BOLD_TOKEN (estático)');
-    console.log('[BoldReports Edge] Raw token length:', rawToken.length);
-    console.log('[BoldReports Edge] Raw token preview:', rawToken.substring(0, 50) + '...');
-    console.groupEnd();
-    return rawToken;
-  }
-
-  // Otherwise, try to generate token via email/password
-  if (!BOLD_EMAIL || !BOLD_PASSWORD) {
-    console.error('[BoldReports Edge] Nenhum método de autenticação configurado');
-    console.groupEnd();
-    throw new Error('No BOLD_TOKEN or BOLD_EMAIL/BOLD_PASSWORD configured');
-  }
-
   // Check if we have a valid cached token
   if (cachedToken && cachedToken.expiresAt > Date.now()) {
     console.log('[BoldReports Edge] Token source: cached');
@@ -63,48 +145,72 @@ async function getAccessToken(): Promise<string> {
     console.groupEnd();
     return cachedToken.token;
   }
-
-  console.log('[BoldReports Edge] Token source: password_grant (gerando novo)');
-  console.log('[BoldReports Edge] Email:', BOLD_EMAIL);
-  console.log('[BoldReports Edge] Token URL:', TOKEN_URL);
   
-  const formData = new URLSearchParams();
-  formData.append('grant_type', 'password');
-  formData.append('username', BOLD_EMAIL);
-  formData.append('password', BOLD_PASSWORD);
-
-  const response = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: formData.toString(),
-  });
-
-  const responseText = await response.text();
-  console.log('[BoldReports Edge] Token response status:', response.status);
-
-  if (!response.ok) {
-    console.error('[BoldReports Edge] Token error response:', responseText.substring(0, 200));
+  // Priority 1: Use Embed Secret (recommended, generates fresh tokens)
+  if (BOLD_EMBED_SECRET && BOLD_EMAIL) {
+    console.log('[BoldReports Edge] Token source: embed_secret (recomendado)');
     console.groupEnd();
-    throw new Error(`Failed to get access token: ${responseText}`);
+    return await getTokenViaEmbedSecret();
+  }
+  
+  // Priority 2: Use static token (fallback)
+  if (BOLD_TOKEN) {
+    const rawToken = extractRawToken(BOLD_TOKEN);
+    console.log('[BoldReports Edge] Token source: BOLD_TOKEN (estático)');
+    console.log('[BoldReports Edge] Raw token length:', rawToken.length);
+    console.log('[BoldReports Edge] Raw token preview:', rawToken.substring(0, 50) + '...');
+    console.groupEnd();
+    return rawToken;
   }
 
-  const tokenData = JSON.parse(responseText);
-  
-  // Cache token with expiration (subtract 5 minutes for safety)
-  const expiresIn = tokenData.expires_in || 3600;
-  cachedToken = {
-    token: tokenData.access_token,
-    expiresAt: Date.now() + (expiresIn - 300) * 1000,
-  };
+  // Priority 3: Use email/password (legacy)
+  if (BOLD_EMAIL && BOLD_PASSWORD) {
+    console.log('[BoldReports Edge] Token source: password_grant (gerando novo)');
+    console.log('[BoldReports Edge] Email:', BOLD_EMAIL);
+    console.log('[BoldReports Edge] Token URL:', TOKEN_URL);
+    
+    const formData = new URLSearchParams();
+    formData.append('grant_type', 'password');
+    formData.append('username', BOLD_EMAIL);
+    formData.append('password', BOLD_PASSWORD);
 
-  console.log('[BoldReports Edge] Token gerado com sucesso');
-  console.log('[BoldReports Edge] Token expiry:', new Date(cachedToken.expiresAt).toISOString());
-  console.log('[BoldReports Edge] Token preview:', tokenData.access_token.substring(0, 50) + '...');
+    const response = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+
+    const responseText = await response.text();
+    console.log('[BoldReports Edge] Token response status:', response.status);
+
+    if (!response.ok) {
+      console.error('[BoldReports Edge] Token error response:', responseText.substring(0, 200));
+      console.groupEnd();
+      throw new Error(`Failed to get access token: ${responseText}`);
+    }
+
+    const tokenData = JSON.parse(responseText);
+    
+    // Cache token with expiration (subtract 5 minutes for safety)
+    const expiresIn = tokenData.expires_in || 3600;
+    cachedToken = {
+      token: tokenData.access_token,
+      expiresAt: Date.now() + (expiresIn - 300) * 1000,
+    };
+
+    console.log('[BoldReports Edge] Token gerado com sucesso');
+    console.log('[BoldReports Edge] Token expiry:', new Date(cachedToken.expiresAt).toISOString());
+    console.log('[BoldReports Edge] Token preview:', tokenData.access_token.substring(0, 50) + '...');
+    console.groupEnd();
+    
+    return tokenData.access_token;
+  }
+
+  console.error('[BoldReports Edge] Nenhum método de autenticação configurado');
   console.groupEnd();
-  
-  return tokenData.access_token;
+  throw new Error('No authentication method configured (BOLD_EMBED_SECRET, BOLD_TOKEN, or BOLD_EMAIL/BOLD_PASSWORD)');
 }
 
 serve(async (req) => {
