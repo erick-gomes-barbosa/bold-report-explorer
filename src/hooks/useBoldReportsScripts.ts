@@ -9,35 +9,60 @@ interface ScriptStatus {
 const SCRIPTS = [
   {
     id: 'jquery',
-    // Use official jQuery CDN as primary, with Bold CDN as pattern
     sources: [
+      '/scripts/jquery-3.6.0.min.js',
       'https://code.jquery.com/jquery-3.6.0.min.js',
-      'https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js',
-      'https://cdn.boldreports.com/external/jquery-3.6.0.min.js',
     ],
     check: () => typeof window !== 'undefined' && !!window.jQuery,
+    beforeLoad: () => {
+      // Create Syncfusion namespace if it doesn't exist (for Bold Reports compatibility)
+      if (typeof window !== 'undefined' && !window.Syncfusion) {
+        (window as any).Syncfusion = {};
+      }
+    },
+  },
+  {
+    id: 'jsrender',
+    sources: [
+      '/scripts/jsrender.min.js',
+      'https://cdn.jsdelivr.net/npm/jsrender@1.0.12/jsrender.min.js',
+    ],
+    check: () => typeof window !== 'undefined' && !!window.jQuery?.templates,
   },
   {
     id: 'bold-common',
-    sources: ['https://cdn.boldreports.com/12.2.7/scripts/common/bold.reports.common.min.js'],
+    sources: [
+      '/scripts/bold.reports.common.min.js',
+    ],
     check: () => typeof window !== 'undefined' && !!window.ej,
   },
   {
     id: 'bold-widgets',
-    sources: ['https://cdn.boldreports.com/12.2.7/scripts/common/bold.reports.widgets.min.js'],
-    check: () => typeof window !== 'undefined' && !!window.ej?.widgets,
+    sources: [
+      '/scripts/bold.reports.widgets.min.js',
+    ],
+    // widgets may initialize differently, just check if ej exists
+    check: () => typeof window !== 'undefined' && !!window.ej,
   },
   {
     id: 'bold-viewer',
-    sources: ['https://cdn.boldreports.com/12.2.7/scripts/bold.report-viewer.min.js'],
+    sources: [
+      '/scripts/bold.report-viewer.min.js',
+    ],
     check: () => typeof window !== 'undefined' && !!window.jQuery?.fn?.boldReportViewer,
+    beforeLoad: () => {
+      // Ensure Syncfusion namespace exists before loading viewer
+      if (typeof window !== 'undefined' && !window.Syncfusion) {
+        (window as any).Syncfusion = {};
+      }
+    },
   },
 ];
 
 const CSS_LINKS = [
   {
     id: 'bold-css',
-    href: 'https://cdn.boldreports.com/12.2.7/content/material/bold.reports.all.min.css',
+    href: '/styles/bold.report-viewer.min.css',
   },
 ];
 
@@ -117,6 +142,11 @@ export function useBoldReportsScripts(): ScriptStatus & { retry: () => void } {
       // Load scripts in sequence
       for (const script of SCRIPTS) {
         if (!script.check()) {
+          // Run beforeLoad hook if exists
+          if ('beforeLoad' in script && typeof script.beforeLoad === 'function') {
+            script.beforeLoad();
+          }
+          
           console.log(`[BoldReportsScripts] Loading: ${script.id}`);
           await loadScript(script.sources, script.id);
           
@@ -169,5 +199,6 @@ declare global {
     jQuery: any;
     $: any;
     ej: any;
+    Syncfusion: any;
   }
 }
