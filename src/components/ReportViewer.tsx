@@ -69,8 +69,9 @@ export function ReportViewer({
     }));
   }, [parameterValues]);
 
-  // URL do servidor - usa a prop ou fallback baseado no siteId
-  const effectiveServerUrl = reportServerUrl || getBoldReportsServerUrl(siteId);
+  // FASE 2: Sempre usar URL base SEM /site/{siteId}
+  // Ignorar prop reportServerUrl para garantir formato correto
+  const effectiveServerUrl = getBoldReportsServerUrl(siteId);
 
   // Log de inicialização quando o viewer é montado
   useEffect(() => {
