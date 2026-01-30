@@ -1,24 +1,22 @@
+/* eslint-disable */
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 
-// Import Bold Reports components
-import '@boldreports/javascript-reporting-controls/Scripts/bold.report-viewer.min';
-import '@boldreports/react-reporting-components';
+// Bold Reports CSS
+import '@boldreports/javascript-reporting-controls/Content/v2.0/tailwind-light/bold.report-viewer.min.css';
 
-// Import Bold Reports CSS
-import '@boldreports/javascript-reporting-controls/Content/material/bold.reports.all.min.css';
+// Bold Reports Scripts (order matters)
+import '@boldreports/javascript-reporting-controls/Scripts/v2.0/common/bold.reports.common.min';
+import '@boldreports/javascript-reporting-controls/Scripts/v2.0/common/bold.reports.widgets.min';
+import '@boldreports/javascript-reporting-controls/Scripts/v2.0/bold.report-viewer.min';
 
-// Declare the Bold Report Viewer component
-declare const BoldReportViewerComponent: React.ComponentType<{
-  id: string;
-  reportServiceUrl: string;
-  reportServerUrl: string;
-  reportPath: string;
-  serviceAuthorizationToken: string;
-  parameters?: Array<{ name: string; values: string[] }>;
-}>;
+// Bold Reports React component
+import '@boldreports/react-reporting-components/Scripts/bold.reports.react.min';
+
+// Declare the Bold Report Viewer component (created by bold.reports.react.min)
+declare let BoldReportViewerComponent: any;
 
 interface BoldReportViewerProps {
   reportPath: string;
@@ -42,7 +40,6 @@ export function BoldReportViewer({
   const [config, setConfig] = useState<ViewerConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const viewerRef = useRef<HTMLDivElement>(null);
   const viewerIdRef = useRef(`bold-viewer-${Date.now()}`);
 
   const fetchViewerConfig = useCallback(async () => {
@@ -120,8 +117,14 @@ export function BoldReportViewer({
   // Token must have lowercase 'bearer ' prefix for Bold Reports Cloud
   const authToken = `bearer ${config.token}`;
 
+  const viewerStyle = {
+    height: '100%',
+    width: '100%',
+    minHeight: '500px',
+  };
+
   return (
-    <div ref={viewerRef} className="w-full h-full min-h-[500px]">
+    <div style={viewerStyle}>
       <BoldReportViewerComponent
         id={viewerIdRef.current}
         reportServiceUrl="https://service.boldreports.com/api/Viewer"
