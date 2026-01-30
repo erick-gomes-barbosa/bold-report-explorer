@@ -1,134 +1,180 @@
 
-## Plano: Corrigir Sobreposição de Botões de Fechar no Modal
+## Plano de Integração Definitiva: Bold Reports Viewer
 
-### Problema Identificado
+### Diagnóstico Completo
 
-O componente `DialogContent` em `src/components/ui/dialog.tsx` (linha 45-48) renderiza automaticamente um botão de fechar (X) com posição `absolute right-4 top-4`. Esse botão está sobrepondo os botões no `DialogHeader` do `ReportViewer.tsx` (Exportar e Tela Cheia), pois ambos ficam no canto superior direito.
+Após pesquisa aprofundada na documentação oficial do Bold Reports, identifiquei os seguintes problemas na implementação atual:
 
-### Análise Visual
+---
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ DialogHeader (com px-4 py-3)                                │
-│                                                             │
-│  [Título do Relatório]         [Exportar] [Tela Cheia]      │
-│                                                   ▲         │
-│                                                   │         │
-│                              Botão X do Dialog ───┘         │
-│                              (position: absolute            │
-│                               right-4 top-4)                │
-│                              SOBREPÕE os botões!            │
-└─────────────────────────────────────────────────────────────┘
+### 1. Análise do Token JWT Fornecido
+
+O token que você forneceu contém as seguintes informações críticas:
+
+| Claim | Valor |
+|-------|-------|
+| **email** | `erick.barbosa@baymetrics.com.br` |
+| **issuer (iss)** | `https://cloud.boldreports.com/reporting/site/b2044034` |
+| **audience (aud)** | `https://cloud.boldreports.com/reporting/site/b2044034` |
+| **exp** | Token válido até Janeiro de 2026 |
+
+**Implicação:** O token foi emitido para o site `b2044034` no cloud centralizado, portanto o `reportServerUrl` deve seguir o padrão do issuer/audience.
+
+---
+
+### 2. Problema Identificado: Formato Incorreto da `reportServerUrl`
+
+A documentação oficial mostra dois cenários:
+
+#### Enterprise Reporting Server
+```javascript
+reportServiceUrl: "https://on-premise-demo.boldreports.com/reporting/reportservice/api/Viewer"
+reportServerUrl: "https://on-premise-demo.boldreports.com/reporting/api/site/site1"
 ```
 
-### Solução Proposta
+#### Cloud Reporting Server (com subdomínio dedicado)
+```javascript
+reportServiceUrl: "https://service.boldreports.com/api/Viewer"
+reportServerUrl: "https://acmecorp.boldreports.com/reporting/api/"
+```
 
-Existem duas abordagens possíveis:
+#### Seu Caso: Cloud Centralizado (sem subdomínio dedicado)
+A sua conta usa o formato `cloud.boldreports.com/reporting/site/{siteId}`, que é um **híbrido** entre os dois. Baseado no issuer/audience do token JWT, o formato correto é:
 
-**Opção A - Remover o botão do DialogContent (Recomendada)**
-Modificar o componente `dialog.tsx` para aceitar uma prop `hideCloseButton` e condicionalmente não renderizar o botão X embutido.
+```javascript
+reportServiceUrl: "https://service.boldreports.com/api/Viewer"
+reportServerUrl: "https://cloud.boldreports.com/reporting/api/site/b2044034"
+```
 
-**Opção B - Adicionar botão X customizado no ReportViewer**
-Restaurar o botão X que foi removido anteriormente no `ReportViewer.tsx` e ajustar o `dialog.tsx` para não renderizar o botão padrão.
+---
 
-Vou implementar a **Opção A** (mais limpa e reutilizável).
+### 3. Segundo Problema: Token Dinâmico vs Estático
+
+Atualmente a edge function gera tokens via `password_grant`. No entanto, você forneceu um token estático válido até 2026. Vamos configurar para usar este token estático, que é mais confiável.
 
 ---
 
 ### Mudanças a Implementar
 
-#### 1. Arquivo: `src/components/ui/dialog.tsx`
+#### Fase 1: Atualizar Secrets
 
-Adicionar prop opcional `hideCloseButton` ao `DialogContent` para controlar a exibição do botão X:
+| Secret | Valor Atual | Novo Valor |
+|--------|-------------|------------|
+| `BOLD_TOKEN` | (não configurado) | Token JWT fornecido |
+| `BOLD_EMAIL` | (valor antigo) | `erick.barbosa@baymetrics.com.br` |
 
+#### Fase 2: Atualizar Edge Function (`supabase/functions/bold-reports/index.ts`)
+
+Corrigir o formato da `reportServerUrl`:
+
+**De:**
 ```typescript
-// Antes (linhas 30-52)
-const DialogContent = React.forwardRef<...>(
-  ({ className, children, ...props }, ref) => (
-    <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Content ...>
-        {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 ...">
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  )
-);
-
-// Depois
-interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
-  hideCloseButton?: boolean;
-}
-
-const DialogContent = React.forwardRef<...>(
-  ({ className, children, hideCloseButton = false, ...props }, ref) => (
-    <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Content ...>
-        {children}
-        {!hideCloseButton && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 ...">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  )
-);
+reportServerUrl: 'https://cloud.boldreports.com/reporting/api/'
 ```
 
-#### 2. Arquivo: `src/components/ReportViewer.tsx`
-
-1. Adicionar `hideCloseButton` ao `DialogContent` para remover o botão automático
-2. Restaurar o botão X customizado no `DialogHeader`, após os botões existentes
-
-**Alteração no DialogContent (linha 244):**
+**Para:**
 ```typescript
-<DialogContent 
-  hideCloseButton  // Adicionar esta prop
-  className={`...`}
->
+reportServerUrl: `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`
 ```
 
-**Adicionar botão X no DialogHeader (após linha 296):**
-```typescript
-import { X } from 'lucide-react'; // Adicionar ao import
+Isso alinha a URL com o issuer/audience do token JWT.
 
-// No DialogHeader, após o botão de Tela Cheia:
-<Button
-  variant="ghost"
-  size="icon"
-  className="h-8 w-8"
-  onClick={onClose}
-  title="Fechar"
->
-  <X className="h-4 w-4" />
-</Button>
+#### Fase 3: Validar Configuração do Viewer (`src/components/ReportViewer.tsx`)
+
+Garantir que:
+1. O `serviceAuthorizationToken` usa o formato `bearer {token}` (minúsculo)
+2. O `reportServerUrl` é passado corretamente
+3. O `ajaxBeforeLoad` injeta o token nos headers corretos
+
+---
+
+### Detalhes Técnicos
+
+#### Arquivo: `supabase/functions/bold-reports/index.ts`
+
+Alterar a ação `get-viewer-config`:
+
+```typescript
+case 'get-viewer-config':
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      siteId: BOLD_SITE_ID,
+      token: accessToken,
+      // CORRIGIDO: Usar formato com site ID para cloud centralizado
+      // Alinhado com issuer/audience do token JWT
+      reportServerUrl: `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+```
+
+#### Arquivo: `src/components/ReportViewer.tsx`
+
+Atualizar a constante de fallback:
+
+```typescript
+// CORRIGIDO: Formato Cloud centralizado COM /site/{siteId}
+// Baseado no issuer/audience do token JWT
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
+```
+
+E na renderização do componente:
+
+```typescript
+<BoldReportViewerComponent
+  id={viewerContainerId}
+  reportServiceUrl={BOLD_REPORTS_SERVICE_URL}
+  reportServerUrl={effectiveServerUrl || getBoldReportsServerUrl(siteId)}
+  serviceAuthorizationToken={`bearer ${token}`}
+  reportPath={reportPath}
+  // ... outras props
+/>
 ```
 
 ---
 
-### Resultado Esperado
+### Configuração Final Esperada
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ DialogHeader                                                │
-│                                                             │
-│  [Título]              [Exportar] [Tela Cheia] [X Fechar]   │
-│                                                             │
-│  Sem sobreposição - botões alinhados horizontalmente        │
-└─────────────────────────────────────────────────────────────┘
-```
+| Propriedade | Valor |
+|-------------|-------|
+| `reportServiceUrl` | `https://service.boldreports.com/api/Viewer` |
+| `reportServerUrl` | `https://cloud.boldreports.com/reporting/api/site/b2044034` |
+| `serviceAuthorizationToken` | `bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
+| `reportPath` | `/{CategoryName}/{ReportName}` |
+
+---
+
+### Sequência de Implementação
+
+1. **Adicionar o secret `BOLD_TOKEN`** com o token JWT fornecido
+2. **Atualizar o secret `BOLD_EMAIL`** para `erick.barbosa@baymetrics.com.br`
+3. **Atualizar a edge function** para usar o formato correto da `reportServerUrl`
+4. **Atualizar o ReportViewer.tsx** com o fallback correto
+5. **Deploy e teste**
+
+---
+
+### Por Que Esta Solução Resolve o 401
+
+O erro 401 ocorre porque:
+1. O token JWT tem `issuer` = `https://cloud.boldreports.com/reporting/site/b2044034`
+2. O viewer estava enviando requisições para `https://cloud.boldreports.com/reporting/api/` (sem o `/site/{siteId}`)
+3. O serviço Bold Reports rejeita porque a URL não corresponde ao issuer do token
+
+Com a correção:
+1. O `reportServerUrl` será `https://cloud.boldreports.com/reporting/api/site/b2044034`
+2. Isso corresponde ao padrão do issuer do token
+3. O serviço Bold Reports validará o token corretamente
 
 ---
 
 ### Resumo das Alterações
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/components/ui/dialog.tsx` | Adicionar prop `hideCloseButton` ao `DialogContent` |
-| `src/components/ReportViewer.tsx` | Usar `hideCloseButton` e adicionar botão X customizado no header |
+| Arquivo/Configuração | Alteração |
+|---------------------|-----------|
+| Secret `BOLD_TOKEN` | Adicionar token JWT estático fornecido |
+| Secret `BOLD_EMAIL` | Atualizar para `erick.barbosa@baymetrics.com.br` |
+| `bold-reports/index.ts` | Corrigir `reportServerUrl` para incluir `/site/${siteId}` |
+| `ReportViewer.tsx` | Atualizar fallback da URL e garantir consistência |
