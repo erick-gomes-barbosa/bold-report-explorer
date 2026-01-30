@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ReportCard } from '@/components/ReportCard';
 import { ExportPanel } from '@/components/ExportPanel';
 import { CategoryFilter } from '@/components/CategoryFilter';
+import { PDFPreviewDialog } from '@/components/PDFPreviewDialog';
 import { useBoldReports } from '@/hooks/useBoldReports';
 import { toast } from 'sonner';
 import type { BoldReport, ExportFormat } from '@/types/boldReports';
@@ -14,17 +15,23 @@ const Index = () => {
   const { 
     reports, 
     parameters, 
-    loading, 
-    error, 
+    loading,
+    previewLoading,
+    error,
+    previewUrl,
     fetchReports, 
     fetchParameters, 
     exportReport,
+    generatePreview,
+    downloadPreview,
+    closePreview,
     clearError 
   } = useBoldReports();
   
   const [selectedReport, setSelectedReport] = useState<BoldReport | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     fetchReports();
@@ -45,6 +52,29 @@ const Index = () => {
     } else {
       toast.error('Erro ao exportar relatório');
     }
+  };
+
+  const handlePreview = async (params: Record<string, string | string[]>) => {
+    if (!selectedReport) return;
+    
+    const success = await generatePreview(selectedReport.Id, params);
+    if (success) {
+      setPreviewOpen(true);
+    } else {
+      toast.error('Erro ao gerar pré-visualização');
+    }
+  };
+
+  const handlePreviewClose = (open: boolean) => {
+    setPreviewOpen(open);
+    if (!open) {
+      closePreview();
+    }
+  };
+
+  const handleDownloadFromPreview = () => {
+    downloadPreview();
+    toast.success('Download iniciado!');
   };
 
   // Filtra relatórios por categoria e busca
@@ -162,7 +192,9 @@ const Index = () => {
                   report={selectedReport}
                   parameters={parameters}
                   loading={loading}
+                  previewLoading={previewLoading}
                   onExport={handleExport}
+                  onPreview={handlePreview}
                 />
               ) : (
                 <div className="bg-muted/50 rounded-lg p-8 text-center border border-dashed border-border">
@@ -176,6 +208,16 @@ const Index = () => {
           </div>
         </div>
       </main>
+
+      {/* PDF Preview Dialog */}
+      <PDFPreviewDialog
+        open={previewOpen}
+        onOpenChange={handlePreviewClose}
+        pdfUrl={previewUrl}
+        loading={previewLoading}
+        onDownload={handleDownloadFromPreview}
+        reportName={selectedReport?.Name}
+      />
     </div>
   );
 };
