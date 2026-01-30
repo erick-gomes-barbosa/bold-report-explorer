@@ -1,15 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2 } from 'lucide-react';
-
-// Declare jQuery and Bold Reports globals
-declare global {
-  interface Window {
-    $: any;
-    jQuery: any;
-    ej: any;
-  }
-}
+import { Button } from '@/components/ui/button';
+import { Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { useBoldReportsScripts } from '@/hooks/useBoldReportsScripts';
 
 interface ReportViewerProps {
   open: boolean;
@@ -36,6 +29,7 @@ export function ReportViewer({
   token,
   parameters = {},
 }: ReportViewerProps) {
+  const { loaded: scriptsLoaded, loading: scriptsLoading, error: scriptsError, retry } = useBoldReportsScripts();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -51,11 +45,11 @@ export function ReportViewer({
   const reportServiceUrl = 'https://service.boldreports.com/api/Viewer';
   const reportServerUrl = `https://${siteId}.boldreports.com/reporting/api`;
 
-  // Initialize viewer using jQuery widget
+  // Initialize viewer using jQuery widget - only after scripts are loaded
   useEffect(() => {
-    if (!open || !viewerRef.current || viewerInitialized.current) return;
+    if (!open || !scriptsLoaded || !viewerRef.current || viewerInitialized.current) return;
 
-    const $ = window.$;
+    const $ = window.jQuery || window.$;
     console.log('[ReportViewer] Verificando disponibilidade:', {
       jQueryAvailable: !!$,
       boldReportViewerFn: !!($?.fn?.boldReportViewer),
@@ -63,8 +57,8 @@ export function ReportViewer({
     });
 
     if (!$ || !$.fn.boldReportViewer) {
-      console.error('[ReportViewer] Bold Reports não carregado');
-      setError('Bold Reports não está disponível. Tente recarregar a página.');
+      console.error('[ReportViewer] Bold Reports não carregado após scripts loaded');
+      setError('Bold Reports não está disponível. Clique em "Tentar novamente".');
       setIsLoading(false);
       return;
     }
@@ -130,12 +124,12 @@ export function ReportViewer({
       setError('Erro ao inicializar o visualizador');
       setIsLoading(false);
     }
-  }, [open, token, siteId, reportPath, formattedParameters, reportServiceUrl, reportServerUrl]);
+  }, [open, scriptsLoaded, token, siteId, reportPath, formattedParameters, reportServiceUrl, reportServerUrl]);
 
   // Cleanup on close
   useEffect(() => {
     if (!open && viewerRef.current && viewerInitialized.current) {
-      const $ = window.$;
+      const $ = window.jQuery || window.$;
       if ($ && $(viewerRef.current).data('boldReportViewer')) {
         $(viewerRef.current).boldReportViewer('destroy');
       }
@@ -145,6 +139,10 @@ export function ReportViewer({
     }
   }, [open]);
 
+  // Combine script error with viewer error
+  const displayError = scriptsError || error;
+  const showLoading = scriptsLoading || (scriptsLoaded && isLoading);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] w-full max-h-[95vh] h-[90vh] p-0">
@@ -153,16 +151,34 @@ export function ReportViewer({
         </DialogHeader>
         
         <div className="flex-1 p-4 pt-2 overflow-hidden relative">
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+          {showLoading && !displayError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10 gap-2">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Carregando relatório...</span>
+              <span className="text-muted-foreground">
+                {scriptsLoading ? 'Carregando componentes...' : 'Carregando relatório...'}
+              </span>
             </div>
           )}
           
-          {error ? (
-            <div className="flex items-center justify-center h-full text-destructive">
-              {error}
+          {displayError ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-5 w-5" />
+                <span>{displayError}</span>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setError(null);
+                  setIsLoading(true);
+                  viewerInitialized.current = false;
+                  retry();
+                }}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Tentar novamente
+              </Button>
             </div>
           ) : (
             <div 
