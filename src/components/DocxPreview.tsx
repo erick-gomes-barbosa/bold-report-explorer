@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { renderAsync } from 'docx-preview';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -24,7 +23,12 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
       containerRef.current.innerHTML = '';
 
       try {
-        await renderAsync(fileBlob, containerRef.current, undefined, {
+        // Dynamically import docx-preview to avoid SSR issues
+        const docxPreview = await import('docx-preview');
+        
+        console.log('[DocxPreview] Rendering document, blob size:', fileBlob.size, 'type:', fileBlob.type);
+        
+        await docxPreview.renderAsync(fileBlob, containerRef.current, undefined, {
           className: 'docx-preview-content',
           inWrapper: true,
           ignoreWidth: false,
@@ -40,9 +44,12 @@ export function DocxPreview({ fileBlob, loading }: DocxPreviewProps) {
           renderFootnotes: true,
           renderEndnotes: true,
         });
+        
+        console.log('[DocxPreview] Document rendered successfully');
       } catch (err) {
-        console.error('Error rendering DOCX:', err);
-        setRenderError(err instanceof Error ? err.message : 'Erro ao renderizar documento');
+        console.error('[DocxPreview] Error rendering DOCX:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+        setRenderError(`Erro ao renderizar documento: ${errorMessage}`);
       } finally {
         setRenderLoading(false);
       }
