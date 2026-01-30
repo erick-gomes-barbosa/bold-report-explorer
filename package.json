@@ -13,7 +13,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@boldreports/javascript-reporting-controls": "^12.2.8",
     "@boldreports/react-reporting-components": "^12.2.8",
+    "@boldreports/types": "^12.2.8",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -44,6 +46,8 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@supabase/supabase-js": "^2.91.0",
     "@tanstack/react-query": "^5.83.0",
+    "@types/create-react-class": "^15.6.9",
+    "@types/jquery": "^3.5.33",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
