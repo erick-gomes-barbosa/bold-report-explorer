@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Download, Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileSpreadsheet, FileText, FileType } from 'lucide-react';
+import { X, Download, Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileSpreadsheet, FileText, FileType, Eye } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -12,7 +12,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { SpreadsheetPreview } from './SpreadsheetPreview';
-import { DocxPreview } from './DocxPreview';
+import { BoldReportViewer } from './BoldReportViewer';
 import type { ExportFormat } from '@/types/boldReports';
 
 // Configure PDF.js worker
@@ -27,6 +27,10 @@ interface DocumentPreviewDialogProps {
   loading: boolean;
   onDownload: () => void;
   documentName?: string;
+  // New props for embedded viewer mode
+  useEmbeddedViewer?: boolean;
+  reportPath?: string;
+  reportParameters?: Record<string, string | string[]>;
 }
 
 // Format display names and icons
@@ -35,6 +39,8 @@ const formatInfo: Record<string, { label: string; icon: React.ReactNode }> = {
   Excel: { label: 'Excel', icon: <FileSpreadsheet className="h-4 w-4" /> },
   Word: { label: 'Word', icon: <FileType className="h-4 w-4" /> },
   CSV: { label: 'CSV', icon: <FileSpreadsheet className="h-4 w-4" /> },
+  HTML: { label: 'HTML', icon: <Eye className="h-4 w-4" /> },
+  PPT: { label: 'PowerPoint', icon: <FileText className="h-4 w-4" /> },
 };
 
 export function DocumentPreviewDialog({
@@ -46,6 +52,9 @@ export function DocumentPreviewDialog({
   loading,
   onDownload,
   documentName = 'Documento',
+  useEmbeddedViewer = false,
+  reportPath,
+  reportParameters,
 }: DocumentPreviewDialogProps) {
   // PDF-specific state
   const [numPages, setNumPages] = useState<number>(0);
@@ -94,9 +103,23 @@ export function DocumentPreviewDialog({
   const formatDisplay = formatInfo[format] || formatInfo.PDF;
   const isPDF = format === 'PDF';
   const isSpreadsheet = format === 'Excel' || format === 'CSV';
-  const isWord = format === 'Word';
 
   const renderPreviewContent = () => {
+    // Use Bold Reports Embedded Viewer when enabled and we have the report path
+    if (useEmbeddedViewer && reportPath) {
+      return (
+        <div className="flex-1 overflow-hidden bg-muted/30">
+          <BoldReportViewer
+            reportPath={reportPath}
+            parameters={reportParameters}
+            onReportLoaded={() => console.log('Report loaded')}
+            onReportError={(error) => console.error('Report error:', error)}
+          />
+        </div>
+      );
+    }
+
+    // Fallback to PDF viewer for exported PDFs
     if (isPDF) {
       return (
         <div className="flex-1 overflow-auto bg-muted/30 flex flex-col items-center">
@@ -164,23 +187,21 @@ export function DocumentPreviewDialog({
       );
     }
 
-    if (isWord) {
-      return (
-        <div className="flex-1 overflow-hidden bg-muted/30">
-          <DocxPreview
-            fileBlob={fileBlob}
-            loading={loading}
-          />
-        </div>
-      );
-    }
-
-    // Fallback
+    // Fallback for other formats - show message to use embedded viewer or download
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/30">
-        <p className="text-sm text-muted-foreground">
-          Formato não suportado para pré-visualização
+      <div className="flex-1 flex flex-col items-center justify-center bg-muted/30 p-8">
+        <FileType className="h-16 w-16 text-muted-foreground/50 mb-4" />
+        <p className="text-lg font-medium text-foreground mb-2">
+          Pré-visualização disponível no visualizador
         </p>
+        <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
+          Para visualizar este documento {formatDisplay.label}, use o visualizador embedded 
+          ou baixe o arquivo diretamente.
+        </p>
+        <Button onClick={onDownload} className="gap-2">
+          <Download className="h-4 w-4" />
+          Baixar {formatDisplay.label}
+        </Button>
       </div>
     );
   };
@@ -199,12 +220,12 @@ export function DocumentPreviewDialog({
                 {documentName}
               </DialogTitle>
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {formatDisplay.label}
+                {useEmbeddedViewer ? 'Viewer' : formatDisplay.label}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {/* Zoom controls - only for PDF */}
-              {isPDF && (
+              {/* Zoom controls - only for PDF without embedded viewer */}
+              {isPDF && !useEmbeddedViewer && (
                 <div className="flex items-center gap-1 mr-2">
                   <Button
                     variant="ghost"
@@ -232,16 +253,19 @@ export function DocumentPreviewDialog({
                 </div>
               )}
               
-              <Button
-                id="btn-download-preview"
-                onClick={onDownload}
-                disabled={loading || (!fileUrl && !fileBlob)}
-                size="sm"
-                className="gap-2"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Baixar</span>
-              </Button>
+              {/* Download button - always show unless using embedded viewer (which has its own) */}
+              {!useEmbeddedViewer && (
+                <Button
+                  id="btn-download-preview"
+                  onClick={onDownload}
+                  disabled={loading || (!fileUrl && !fileBlob)}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Baixar</span>
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -256,8 +280,8 @@ export function DocumentPreviewDialog({
         
         {renderPreviewContent()}
 
-        {/* Page navigation footer - only for PDF */}
-        {isPDF && fileUrl && numPages > 0 && !loading && (
+        {/* Page navigation footer - only for PDF without embedded viewer */}
+        {isPDF && !useEmbeddedViewer && fileUrl && numPages > 0 && !loading && (
           <div className="px-4 py-3 border-t flex items-center justify-center gap-4 bg-background">
             <Button
               variant="outline"
