@@ -25,10 +25,11 @@ interface ReportViewerProps {
 // URLs do Bold Reports Cloud
 const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
 
-// CORRIGIDO: Formato Cloud centralizado sem /site/{siteId} no path
-// Baseado na documentação: https://<<tenant>>.boldreports.com/reporting/api/
-// Como usamos cloud.boldreports.com centralizado, removemos /site/{siteId}
-const DEFAULT_REPORT_SERVER_URL = 'https://cloud.boldreports.com/reporting/api/';
+// CORRIGIDO: Formato Cloud centralizado COM /site/{siteId}
+// Baseado no issuer/audience do token JWT: https://cloud.boldreports.com/reporting/site/{siteId}
+// O reportServerUrl deve seguir o padrão: https://cloud.boldreports.com/reporting/api/site/{siteId}
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://cloud.boldreports.com/reporting/api/site/${siteId}`;
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
@@ -68,8 +69,8 @@ export function ReportViewer({
     }));
   }, [parameterValues]);
 
-  // URL do servidor - usa a prop ou fallback para o padrão
-  const effectiveServerUrl = reportServerUrl || DEFAULT_REPORT_SERVER_URL;
+  // URL do servidor - usa a prop ou fallback baseado no siteId
+  const effectiveServerUrl = reportServerUrl || getBoldReportsServerUrl(siteId);
 
   // Log de inicialização quando o viewer é montado
   useEffect(() => {
