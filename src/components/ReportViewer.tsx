@@ -25,11 +25,10 @@ interface ReportViewerProps {
 // URLs do Bold Reports Cloud
 const BOLD_REPORTS_SERVICE_URL = 'https://service.boldreports.com/api/Viewer';
 
-// CORRIGIDO FASE 1: URL base SEM /site/{siteId}
-// O componente Viewer anexa dinamicamente os endpoints necessários
-// Conforme documentação: o viewer requer apenas a URL base da API
-const getBoldReportsServerUrl = (_siteId: string) => 
-  `https://cloud.boldreports.com/reporting/api/`;
+// FASE 3: Formato subdomínio conforme guia de integração
+// URL: https://{siteid}.boldreports.com/reporting/api
+const getBoldReportsServerUrl = (siteId: string) => 
+  `https://${siteId}.boldreports.com/reporting/api`;
 
 // Formatos de exportação disponíveis
 const exportFormats: { format: ExportFormat; label: string }[] = [
@@ -101,28 +100,24 @@ export function ReportViewer({
     if (token && args) {
       const bearerToken = `bearer ${token}`;
       
-      // Método 1: Usar args.headers.push() conforme doc v12.2.7
-      if (args.headers && Array.isArray(args.headers)) {
-        // Remover cabeçalhos de autorização existentes para evitar duplicidade
-        args.headers = args.headers.filter((h: { Key: string }) => h.Key !== 'Authorization');
-        
-        // Injetar novo token via push (formato esperado pela biblioteca)
-        args.headers.push({
-          Key: 'Authorization',
-          Value: bearerToken
-        });
-        
-        console.log('[BoldReports AJAX] ✅ Token injetado via headers.push()');
-      }
-      
-      // Método 2: serviceAuthorizationToken como fallback
+      // Garantir que args.serviceAuthorizationToken está definido
       args.serviceAuthorizationToken = bearerToken;
       
-      // Método 3: headerReq como fallback adicional
-      if (!args.headerReq) {
-        args.headerReq = {};
+      // FASE 3: Inicializar args.headers como array vazio se não existir
+      if (!args.headers) {
+        args.headers = [];
       }
-      args.headerReq['Authorization'] = bearerToken;
+      
+      // Remover cabeçalhos de autorização existentes para evitar duplicidade
+      args.headers = args.headers.filter((h: { Key: string }) => h.Key !== 'Authorization');
+      
+      // Injetar novo token via push (formato esperado pela biblioteca v12.2.7)
+      args.headers.push({
+        Key: 'Authorization',
+        Value: bearerToken
+      });
+      
+      console.log('[BoldReports AJAX] ✅ Token injetado via headers.push()');
     } else {
       console.warn('[BoldReports AJAX] ⚠️ Token não disponível');
     }
