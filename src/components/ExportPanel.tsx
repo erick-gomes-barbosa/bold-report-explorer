@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileSpreadsheet, FileText, FileType, Loader2 } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, FileType, Loader2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -10,7 +10,9 @@ interface ExportPanelProps {
   report: BoldReport;
   parameters: ReportParameter[];
   loading: boolean;
+  previewLoading: boolean;
   onExport: (format: ExportFormat, params: Record<string, string | string[]>) => void;
+  onPreview: (params: Record<string, string | string[]>) => void;
 }
 
 // Format-specific colors that blend with the earthy palette
@@ -54,13 +56,19 @@ const exportFormats: { format: ExportFormat; label: string; icon: React.ReactNod
   { format: 'CSV', label: 'CSV', icon: <FileSpreadsheet className="h-4 w-4" /> },
 ];
 
-export function ExportPanel({ report, parameters, loading, onExport }: ExportPanelProps) {
+export function ExportPanel({ report, parameters, loading, previewLoading, onExport, onPreview }: ExportPanelProps) {
   const [parameterValues, setParameterValues] = useState<Record<string, string | string[]>>({});
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('PDF');
 
   const handleExport = () => {
     onExport(selectedFormat, parameterValues);
   };
+
+  const handlePreview = () => {
+    onPreview(parameterValues);
+  };
+
+  const isLoading = loading || previewLoading;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -115,6 +123,7 @@ export function ExportPanel({ report, parameters, loading, onExport }: ExportPan
                             : `hover:${colors.bg} hover:${colors.text} hover:${colors.border}`
                         }`}
                         onClick={() => setSelectedFormat(format)}
+                        disabled={isLoading}
                       >
                         <span className={isSelected ? colors.text : colors.text}>{icon}</span>
                         <span className="hidden xl:inline">{label}</span>
@@ -129,34 +138,70 @@ export function ExportPanel({ report, parameters, loading, onExport }: ExportPan
             })}
           </div>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  id="btn-export-report"
-                  onClick={handleExport} 
-                  disabled={loading}
-                  className="w-full gap-2"
-                  size="lg"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                      <span className="hidden xl:inline">Exportando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 shrink-0" />
-                      <span className="hidden xl:inline">Exportar</span>
-                    </>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="xl:hidden">
-                <p>{loading ? 'Exportando...' : 'Exportar'}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="flex gap-2">
+            {/* Preview Button - only for PDF */}
+            {selectedFormat === 'PDF' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      id="btn-preview-pdf"
+                      onClick={handlePreview} 
+                      disabled={isLoading}
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      size="lg"
+                    >
+                      {previewLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                          <span className="hidden xl:inline">Gerando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-4 w-4 shrink-0" />
+                          <span className="hidden xl:inline">Pré-visualizar</span>
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="xl:hidden">
+                    <p>{previewLoading ? 'Gerando...' : 'Pré-visualizar PDF'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* Export Button */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    id="btn-export-report"
+                    onClick={handleExport} 
+                    disabled={isLoading}
+                    className={`gap-2 ${selectedFormat === 'PDF' ? 'flex-1' : 'w-full'}`}
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        <span className="hidden xl:inline">Exportando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 shrink-0" />
+                        <span className="hidden xl:inline">Exportar</span>
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="xl:hidden">
+                  <p>{loading ? 'Exportando...' : 'Exportar'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </CardContent>
       </Card>
     </div>
