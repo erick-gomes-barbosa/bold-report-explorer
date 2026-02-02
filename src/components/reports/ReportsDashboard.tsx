@@ -234,12 +234,12 @@ export function ReportsDashboard() {
   const columns = dynamicColumns.length > 0 ? dynamicColumns : getColumns(activeTab);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
       <ReportsHeader />
 
-      <main className="container max-w-7xl mx-auto px-4 py-6">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <main className="flex-1 container max-w-7xl mx-auto px-4 py-6 overflow-hidden flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
             <TabsList className="grid w-full sm:w-auto grid-cols-3">
               <TabsTrigger value="bens-necessidade" className="gap-2">
                 <Package className="h-4 w-4 hidden sm:inline" />
@@ -269,21 +269,19 @@ export function ReportsDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0 mt-6">
             {/* Desktop Filters Sidebar */}
-            <div className="hidden lg:block lg:col-span-1">
-              <div className="sticky top-24">
-                <FiltersSidebar
-                  reportType={activeTab}
-                  onSubmit={handleFiltersSubmit}
-                  loading={loading}
-                />
-              </div>
+            <div className="hidden lg:block lg:col-span-1 min-h-0">
+              <FiltersSidebar
+                reportType={activeTab}
+                onSubmit={handleFiltersSubmit}
+                loading={loading}
+              />
             </div>
 
             {/* Data Table Area */}
-            <div className="lg:col-span-3">
-              <TabsContent value="bens-necessidade" className="mt-0">
+            <div className="lg:col-span-3 min-h-0 overflow-auto">
+              <TabsContent value="bens-necessidade" className="mt-0 h-full">
                 <DataTable
                   data={data}
                   columns={columns}
@@ -297,7 +295,7 @@ export function ReportsDashboard() {
                 />
               </TabsContent>
 
-              <TabsContent value="inventario" className="mt-0">
+              <TabsContent value="inventario" className="mt-0 h-full">
                 <DataTable
                   data={data}
                   columns={columns}
@@ -311,7 +309,7 @@ export function ReportsDashboard() {
                 />
               </TabsContent>
 
-              <TabsContent value="auditoria" className="mt-0">
+              <TabsContent value="auditoria" className="mt-0 h-full">
                 <DataTable
                   data={data}
                   columns={columns}
