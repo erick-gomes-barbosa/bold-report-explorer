@@ -3,21 +3,30 @@
  */
 
 /**
- * Decodifica uma string base64 para texto.
+ * Decodifica uma string base64 para texto UTF-8.
+ * Lida corretamente com caracteres especiais (acentos, cedilha, etc).
  */
 export function decodeBase64(base64String: string): string {
   try {
     // Handle URL-safe base64
     const normalized = base64String.replace(/-/g, '+').replace(/_/g, '/');
-    let decoded = atob(normalized);
     
-    // Remove BOM (Byte Order Mark) if present - UTF-8 BOM is EF BB BF
-    if (decoded.charCodeAt(0) === 0xFEFF || decoded.startsWith('\ufeff')) {
-      decoded = decoded.substring(1);
+    // Decode base64 to binary string
+    const binaryString = atob(normalized);
+    
+    // Convert binary string to Uint8Array for proper UTF-8 decoding
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
-    // Also handle the decoded representation of UTF-8 BOM
-    if (decoded.startsWith('ï»¿')) {
-      decoded = decoded.substring(3);
+    
+    // Decode UTF-8 bytes to string
+    const decoder = new TextDecoder('utf-8');
+    let decoded = decoder.decode(bytes);
+    
+    // Remove BOM (Byte Order Mark) if present
+    if (decoded.charCodeAt(0) === 0xFEFF) {
+      decoded = decoded.substring(1);
     }
     
     return decoded;
