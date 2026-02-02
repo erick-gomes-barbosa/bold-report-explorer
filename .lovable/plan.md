@@ -1,173 +1,154 @@
 
-# Plano: Corrigir Responsividade e Scroll Independente dos Filtros
+# Plano: Corrigir Scroll e Corte de Filtros em Telas Pequenas
 
-## Problemas Identificados
+## Problema Identificado
 
-### 1. Layout Quebrando ao Aplicar Filtros
-Quando os filtros são aplicados e o botão "Gerar" é clicado:
-- A sidebar de filtros não possui altura máxima definida
-- O conteúdo expande sem contenção adequada
-- O `sticky top-24` não funciona corretamente sem altura definida no container
+Analisando a imagem enviada e o código atual:
 
-### 2. Scroll dos Filtros Afeta a Página Inteira
-Atualmente:
-- Ao scrollar os filtros, toda a página sobe
-- Não há scroll independente para a área de filtros
-- O scrollbar padrão ocupa espaço visual
+1. **Filtros estao sendo cortados**: A `max-h-[calc(100vh-180px)]` aplicada ao FiltersSidebar nao esta funcionando corretamente em telas menores porque:
+   - O container pai usa `grid` sem altura explicita
+   - O `min-h-0` no container do grid nao esta propagando corretamente para os filhos
+   - Em telas pequenas (notebooks), o calculo de 180px de offset pode nao ser suficiente
 
-## Solução Proposta
+2. **ScrollArea nao esta funcionando**: O componente `ScrollArea` do Radix UI precisa de uma altura explicita no container pai para funcionar corretamente. Atualmente:
+   - O grid container nao tem altura definida
+   - O `flex-1 min-h-0` no ScrollArea nao tem referencia de altura maxima
 
-### Arquitetura de Layout
+## Causa Raiz
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│ ReportsHeader (sticky top-0)                     height: ~72px│
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│ main (height: calc(100vh - 72px), overflow: hidden)         │
-│                                                             │
-│  ┌───────────────┐  ┌─────────────────────────────────────┐ │
-│  │ FiltersSidebar │  │ DataTable Area                      │ │
-│  │               │  │                                     │ │
-│  │ max-height:   │  │ (scroll vertical próprio)           │ │
-│  │ calc(100vh    │  │                                     │ │
-│  │ - header      │  │                                     │ │
-│  │ - padding)    │  │                                     │ │
-│  │               │  │                                     │ │
-│  │ scroll:       │  │                                     │ │
-│  │ independente  │  │                                     │ │
-│  │ (thin)        │  │                                     │ │
-│  └───────────────┘  └─────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+Estrutura atual com problema:
+
+<main className="flex-1 container... overflow-hidden flex flex-col min-h-0">
+  <Tabs className="flex-1 flex flex-col min-h-0">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0 mt-6">
+      │
+      ├── <div className="hidden lg:block lg:col-span-1 min-h-0">  ← SEM ALTURA DEFINIDA
+      │     <FiltersSidebar max-h-[calc(100vh-180px)]/>
+      │
+      └── <div className="lg:col-span-3 min-h-0 overflow-auto">
+            <DataTable/>
+
+Problema: O grid nao propaga altura corretamente para os filhos em viewports menores
 ```
 
-## Alterações Necessárias
+## Solucao Proposta
 
-### 1. ReportsDashboard.tsx - Layout Principal
+### 1. Usar Flexbox ao inves de Grid no Layout Principal
 
-Modificar a estrutura para:
-- Definir altura fixa do container principal baseada em viewport
-- Usar `flex` com `min-h-0` para permitir scroll nos filhos
-- Remover `min-h-screen` que causa overflow
+Substituir o grid por flexbox que propaga altura de forma mais previsivel:
+
+```text
+Antes: grid grid-cols-1 lg:grid-cols-4
+Depois: flex flex-col lg:flex-row
+```
+
+### 2. Ajustar FiltersSidebar para Altura Responsiva
+
+Usar altura relativa ao container ao inves de calculo fixo de viewport:
+
+```text
+Antes: max-h-[calc(100vh-180px)]
+Depois: h-full max-h-full (altura do container pai) com overflow interno
+```
+
+### 3. Garantir Propagacao de Altura no Container
+
+Adicionar altura explicita no container dos filtros:
+
+```text
+<div className="hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0 h-full">
+```
+
+## Alteracoes Detalhadas
+
+### Arquivo: ReportsDashboard.tsx
+
+**Mudanca na area do grid (linha 272):**
 
 ```text
 Antes:
-  <div className="min-h-screen bg-background">
-    <main className="container...">
-      <div className="grid grid-cols-1 lg:grid-cols-4">
-        <div className="hidden lg:block lg:col-span-1">
-          <div className="sticky top-24">
-            <FiltersSidebar />
-
-Depois:
-  <div className="h-screen flex flex-col bg-background overflow-hidden">
-    <main className="flex-1 container... overflow-hidden">
-      <div className="grid grid-cols-1 lg:grid-cols-4 h-full">
-        <div className="hidden lg:block lg:col-span-1 h-full min-h-0">
-          <FiltersSidebar />
-```
-
-### 2. FiltersSidebar.tsx - Scroll Independente
-
-Adicionar ScrollArea com altura máxima calculada e scrollbar mínimo:
-
-```text
-Antes:
-  <div className="bg-card rounded-lg border border-border p-4">
-    <div className="flex items-center gap-2 mb-4...">Filtros</div>
-    {reportType === 'bens-necessidade' && <BensNecessidadeFilters />}
-
-Depois:
-  <div className="bg-card rounded-lg border border-border flex flex-col 
-                  max-h-[calc(100vh-180px)] overflow-hidden">
-    <div className="flex items-center gap-2 p-4 pb-3 border-b...">Filtros</div>
-    <ScrollArea className="flex-1 min-h-0">
-      <div className="p-4 pt-3">
-        {reportType === 'bens-necessidade' && <BensNecessidadeFilters />}
-      </div>
-    </ScrollArea>
+<div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0 mt-6">
+  <div className="hidden lg:block lg:col-span-1 min-h-0">
+    <FiltersSidebar ... />
   </div>
+  <div className="lg:col-span-3 min-h-0 overflow-auto">
+
+Depois:
+<div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 mt-6 overflow-hidden">
+  <div className="hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0 min-h-0 max-h-full">
+    <FiltersSidebar ... />
+  </div>
+  <div className="flex-1 min-w-0 min-h-0 overflow-auto">
 ```
 
-### 3. ScrollBar - Scrollbar Mínimo
+### Arquivo: FiltersSidebar.tsx
 
-Modificar o componente ScrollBar para ter largura mínima:
+**Mudanca no container principal (linha 16):**
 
 ```text
 Antes:
-  orientation === "vertical" && "h-full w-2.5 border-l..."
+<div className="bg-card rounded-lg border border-border flex flex-col max-h-[calc(100vh-180px)] overflow-hidden">
 
 Depois:
-  orientation === "vertical" && "h-full w-1.5 border-l..."
+<div className="bg-card rounded-lg border border-border flex flex-col h-full overflow-hidden">
 ```
 
-### 4. CSS Global - Estilo de Scrollbar Fino
+Esta mudanca faz o FiltersSidebar ocupar 100% da altura do container pai, que agora tem altura controlada pelo flexbox.
 
-Adicionar estilos para scrollbar nativo fino como fallback:
+### Arquivo: scroll-area.tsx
+
+Garantir que o Viewport tenha `overflow-y-auto`:
 
 ```text
-/* Scrollbar fino para áreas de filtro */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-}
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 3px;
-}
+Linha 11 - adicionar overflow explicito:
+<ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] overflow-y-auto">
+```
+
+## Estrutura Final
+
+```text
+<main className="flex-1 ... overflow-hidden flex flex-col min-h-0">
+  │
+  └── <Tabs className="flex-1 flex flex-col min-h-0">
+        │
+        ├── TabsList (flex-shrink-0)
+        │
+        └── <div className="flex flex-row ... flex-1 min-h-0 overflow-hidden">
+              │
+              ├── <div className="lg:w-72 flex-shrink-0 min-h-0 max-h-full">
+              │     │
+              │     └── <FiltersSidebar className="h-full">
+              │           │
+              │           ├── Header (flex-shrink-0)
+              │           │
+              │           └── <ScrollArea className="flex-1 min-h-0">
+              │                 └── Filtros (scroll interno)
+              │
+              └── <div className="flex-1 min-w-0 overflow-auto">
+                    └── DataTable
 ```
 
 ## Arquivos a Modificar
 
-| Arquivo | Alteração |
+| Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/reports/ReportsDashboard.tsx` | Ajustar layout para altura fixa baseada em viewport |
-| `src/components/reports/FiltersSidebar.tsx` | Adicionar ScrollArea com altura máxima e scroll independente |
-| `src/components/ui/scroll-area.tsx` | Reduzir largura do scrollbar vertical para mínimo |
-| `src/index.css` | Adicionar estilos de scrollbar fino como fallback |
+| `src/components/reports/ReportsDashboard.tsx` | Trocar grid por flexbox, adicionar largura fixa ao container de filtros |
+| `src/components/reports/FiltersSidebar.tsx` | Usar `h-full` ao inves de `max-h-[calc(...)]` |
+| `src/components/ui/scroll-area.tsx` | Adicionar overflow explicito no Viewport |
 
-## Detalhes Técnicos
+## Beneficios da Solucao
 
-### Cálculo de Altura Máxima dos Filtros
+1. **Flexbox propaga altura corretamente** - Diferente do grid, flexbox com `min-h-0` garante que filhos respeitem limites
+2. **Largura fixa para filtros** - `lg:w-72 xl:w-80` garante espaco consistente independente do conteudo
+3. **Scroll independente funcional** - Com altura explicita, o ScrollArea funcionara corretamente
+4. **Responsivo** - Em telas menores que `lg`, os filtros ficam no drawer mobile (comportamento existente)
+5. **Nao corta conteudo** - `h-full` + container com altura propagada garante que filtros preencham o espaco disponivel
 
-```text
-max-h-[calc(100vh-180px)]
+## Teste de Validacao
 
-Onde:
-- 100vh = altura total da viewport
-- 72px = altura do header
-- 24px = padding superior do main
-- 24px = padding inferior do main
-- ~60px = margem de segurança para tabs e espaçamento
-```
-
-### Prevenção de Layout Shift
-
-Para evitar quebra de layout quando o estado de loading é ativado:
-
-- O DataTable já usa `<Skeleton>` que mantém altura consistente
-- O FiltersSidebar terá altura máxima fixa, impedindo expansão
-- O grid usa `min-h-0` para permitir que filhos com `flex-1` respeitem limites
-
-### Comportamento do Scroll Independente
-
-```text
-Interação do usuário:
-  │
-  ├─ Scroll dentro da área de filtros
-  │   └─ Apenas os filtros rolam (ScrollArea interno)
-  │   └─ Página principal permanece fixa
-  │
-  └─ Scroll fora da área de filtros
-      └─ Comportamento normal do navegador
-```
-
-## Resultado Esperado
-
-1. Layout não quebra ao aplicar filtros ou gerar relatório
-2. Filtros têm scroll independente que não afeta a página
-3. Scrollbar dos filtros é fino e discreto
-4. Altura dos componentes é calculada dinamicamente baseada na viewport
-5. Experiência responsiva mantida em diferentes tamanhos de tela
+Apos implementacao, verificar:
+1. Em tela de notebook (1366x768), filtros devem ser visiveis e scrollaveis
+2. Scroll dentro dos filtros nao deve afetar pagina principal
+3. Botao "Gerar" deve estar sempre visivel na area de filtros
+4. DataTable deve ter seu proprio scroll independente
