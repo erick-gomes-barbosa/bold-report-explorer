@@ -49,9 +49,16 @@ export function useReportsData() {
         throw new Error(`ID do relatório não configurado para: ${reportType}`);
       }
 
+      // Extract label mappings if present, then remove from filters
+      const filtersWithMappings = filters as Record<string, unknown>;
+      const labelMappings = filtersWithMappings._labelMappings as Record<string, Record<string, string>> | undefined;
+      const cleanFilters = { ...filtersWithMappings };
+      delete cleanFilters._labelMappings;
+
       const parameters = mapFiltersToBoldParameters(
         reportType, 
-        filters as Record<string, unknown>
+        cleanFilters,
+        labelMappings
       );
 
       console.group('[ReportsData] Fetching report data');
@@ -130,9 +137,16 @@ export function useReportsData() {
         throw new Error(`ID do relatório não configurado para: ${reportType}`);
       }
 
+      // Extract label mappings if present, then remove from filters
+      const filtersWithMappings = filters as Record<string, unknown>;
+      const labelMappings = filtersWithMappings._labelMappings as Record<string, Record<string, string>> | undefined;
+      const cleanFilters = { ...filtersWithMappings };
+      delete cleanFilters._labelMappings;
+
       const parameters = mapFiltersToBoldParameters(
         reportType, 
-        filters as Record<string, unknown>
+        cleanFilters,
+        labelMappings
       );
 
       // Map local format to Bold Reports format

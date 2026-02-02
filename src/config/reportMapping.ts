@@ -48,16 +48,26 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
 };
 
 /**
+ * Estrutura de parâmetro com labels e values para a API Bold Reports.
+ */
+export interface BoldParameterData {
+  labels: string[];
+  values: string[];
+}
+
+/**
  * Converte os filtros do formulário para o formato de parâmetros do Bold Reports.
+ * Retorna um objeto onde cada parâmetro tem labels e values.
  */
 export function mapFiltersToBoldParameters(
   reportType: ReportType,
-  filters: Record<string, unknown>
-): Record<string, string[]> {
+  filters: Record<string, unknown>,
+  labelMappings?: Record<string, Record<string, string>> // value -> label mappings
+): Record<string, BoldParameterData> {
   const config = REPORT_MAPPING[reportType];
   if (!config) return {};
 
-  const parameters: Record<string, string[]> = {};
+  const parameters: Record<string, BoldParameterData> = {};
 
   for (const [filterKey, filterValue] of Object.entries(filters)) {
     const boldParamName = config.parameterMapping[filterKey];
@@ -67,15 +77,34 @@ export function mapFiltersToBoldParameters(
 
     // Handle Date objects
     if (filterValue instanceof Date) {
-      parameters[boldParamName] = [filterValue.toISOString().split('T')[0]];
+      const dateStr = filterValue.toISOString().split('T')[0];
+      parameters[boldParamName] = {
+        labels: [dateStr],
+        values: [dateStr]
+      };
     }
-    // Handle arrays
+    // Handle arrays (multi-select values)
     else if (Array.isArray(filterValue)) {
-      parameters[boldParamName] = filterValue.map(String);
+      if (filterValue.length === 0) continue; // Skip empty arrays
+      
+      const values = filterValue.map(String);
+      const labelMap = labelMappings?.[filterKey];
+      const labels = labelMap 
+        ? values.map(v => labelMap[v] || v)
+        : values;
+      
+      parameters[boldParamName] = { labels, values };
     }
     // Handle primitive values
     else {
-      parameters[boldParamName] = [String(filterValue)];
+      const value = String(filterValue);
+      const labelMap = labelMappings?.[filterKey];
+      const label = labelMap?.[value] || value;
+      
+      parameters[boldParamName] = {
+        labels: [label],
+        values: [value]
+      };
     }
   }
 

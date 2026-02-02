@@ -48,8 +48,12 @@ const filterSchema = z.object({
 
 type FilterFormData = z.infer<typeof filterSchema>;
 
+export interface FilterSubmitData extends FilterFormData {
+  _labelMappings?: Record<string, Record<string, string>>;
+}
+
 interface BensNecessidadeFiltersProps {
-  onSubmit: (data: FilterFormData) => void;
+  onSubmit: (data: FilterSubmitData) => void;
   loading?: boolean;
 }
 
@@ -57,7 +61,8 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
   const reportId = REPORT_MAPPING['bens-necessidade'].reportId;
   const { 
     loading: loadingParams, 
-    getOptionsForParameter 
+    getOptionsForParameter,
+    getLabelMappingForParameter
   } = useReportParameters(reportId);
 
   const form = useForm<FilterFormData>({
@@ -69,6 +74,21 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
       conservacao: [],
     },
   });
+
+  // Wrapper para incluir label mappings no submit
+  const handleFormSubmit = (data: FilterFormData) => {
+    const labelMappings: Record<string, Record<string, string>> = {
+      orgaoUnidade: getLabelMappingForParameter('param_unidade'),
+      grupo: getLabelMappingForParameter('param_grupo'),
+      situacao: getLabelMappingForParameter('param_situacao'),
+      conservacao: getLabelMappingForParameter('param_estado'),
+    };
+
+    onSubmit({
+      ...data,
+      _labelMappings: labelMappings,
+    });
+  };
 
   const handleReset = () => {
     form.reset({
@@ -91,7 +111,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
 
   return (
     <Form {...form}>
-      <form id="form-bens-necessidade" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form id="form-bens-necessidade" onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
         {/* Órgão/Unidade */}
         <FormField
           control={form.control}
