@@ -8,6 +8,7 @@ interface UseReportParametersResult {
   loading: boolean;
   error: string | null;
   getOptionsForParameter: (paramName: string) => MultiSelectOption[];
+  getLabelMappingForParameter: (paramName: string) => Record<string, string>;
   refetch: () => Promise<void>;
 }
 
@@ -96,11 +97,40 @@ export function useReportParameters(reportId: string): UseReportParametersResult
     return [];
   }, [parameters]);
 
+  /**
+   * Retorna um mapeamento de value -> label para um parâmetro específico.
+   * Útil para enviar labels junto com values para a API Bold Reports.
+   */
+  const getLabelMappingForParameter = useCallback((paramName: string): Record<string, string> => {
+    const param = parameters.find(p => p.Name === paramName);
+    if (!param) return {};
+
+    const mapping: Record<string, string> = {};
+
+    // Suporta ambos os formatos: AvailableValues e ValidValues
+    if (param.AvailableValues && param.AvailableValues.length > 0) {
+      param.AvailableValues
+        .filter((av: AvailableValue) => av.DisplayField && av.ValueField)
+        .forEach((av: AvailableValue) => {
+          mapping[av.ValueField] = av.DisplayField;
+        });
+    } else if (param.ValidValues && param.ValidValues.length > 0) {
+      param.ValidValues
+        .filter((vv) => vv.Label && vv.Value)
+        .forEach((vv) => {
+          mapping[vv.Value] = vv.Label;
+        });
+    }
+
+    return mapping;
+  }, [parameters]);
+
   return {
     parameters,
     loading,
     error,
     getOptionsForParameter,
+    getLabelMappingForParameter,
     refetch: fetchParameters,
   };
 }

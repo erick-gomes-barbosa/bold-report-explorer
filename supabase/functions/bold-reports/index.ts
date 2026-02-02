@@ -325,36 +325,64 @@ serve(async (req) => {
 
       case 'export-report':
         // API Cloud v5.0 endpoint: POST /v5.0/reports/export
-        // This endpoint requires FilterParameters to be a JSON string with arrays
+        // Parameters must be an array of { Name, Labels, Values }
         // Documentation: https://documentation.boldreports.com/embedded/rest-api/api-reference/export-report/
         
         const exportFormat = format || 'PDF';
         const exportUrl = `${BASE_URL}/v5.0/reports/export`;
         
-        // Transform parameters: ensure all values are arrays (for multi-value support)
-        const paramsObject: Record<string, string[]> = {};
-        if (parameters && Object.keys(parameters).length > 0) {
-          Object.entries(parameters).forEach(([name, value]) => {
-            // Convert everything to array of strings
-            if (Array.isArray(value)) {
-              paramsObject[name] = value.map(String);
-            } else if (value !== null && value !== undefined && value !== '') {
-              paramsObject[name] = [String(value)];
+        // Transform parameters to Bold Reports format: { Name, Labels, Values }[]
+        interface BoldReportParameter {
+          Name: string;
+          Labels: string[];
+          Values: string[];
+        }
+        
+        const formattedParameters: BoldReportParameter[] = [];
+        
+        if (parameters && typeof parameters === 'object') {
+          Object.entries(parameters).forEach(([name, data]) => {
+            // Handle both formats:
+            // 1. New format: { labels: string[], values: string[] }
+            // 2. Legacy format: string[] (values only)
+            
+            let values: string[] = [];
+            let labels: string[] = [];
+            
+            if (data && typeof data === 'object' && !Array.isArray(data)) {
+              // New format with labels and values
+              const paramData = data as { labels?: string[]; values?: string[] };
+              values = paramData.values || [];
+              labels = paramData.labels || values; // Fallback to values if no labels
+            } else if (Array.isArray(data)) {
+              // Legacy format: just values array
+              values = data.map(String);
+              labels = values; // Use values as labels
+            } else if (data !== null && data !== undefined && data !== '') {
+              // Single value
+              values = [String(data)];
+              labels = values;
+            }
+            
+            // Only add parameter if it has values (empty arrays = omit for "select all" behavior)
+            if (values.length > 0) {
+              formattedParameters.push({
+                Name: name,
+                Labels: labels,
+                Values: values
+              });
             }
           });
         }
         
-        // Serialize parameters as JSON string (the key part!)
-        const filterParametersJson = JSON.stringify(paramsObject);
-        
         const exportBody = {
           ReportId: reportId,
           ExportType: exportFormat,
-          FilterParameters: filterParametersJson
+          Parameters: formattedParameters
         };
         
         console.log('Exporting from:', exportUrl);
-        console.log('Export parameters:', paramsObject);
+        console.log('Formatted parameters:', JSON.stringify(formattedParameters, null, 2));
         console.log('Export body:', JSON.stringify(exportBody, null, 2));
 
         response = await fetch(exportUrl, {
