@@ -9,7 +9,18 @@ export function decodeBase64(base64String: string): string {
   try {
     // Handle URL-safe base64
     const normalized = base64String.replace(/-/g, '+').replace(/_/g, '/');
-    return atob(normalized);
+    let decoded = atob(normalized);
+    
+    // Remove BOM (Byte Order Mark) if present - UTF-8 BOM is EF BB BF
+    if (decoded.charCodeAt(0) === 0xFEFF || decoded.startsWith('\ufeff')) {
+      decoded = decoded.substring(1);
+    }
+    // Also handle the decoded representation of UTF-8 BOM
+    if (decoded.startsWith('ï»¿')) {
+      decoded = decoded.substring(3);
+    }
+    
+    return decoded;
   } catch (error) {
     console.error('[CSVParser] Erro ao decodificar base64:', error);
     throw new Error('Falha ao decodificar dados do relatório');
@@ -86,37 +97,57 @@ export function parseCSVToObjects(
   options: {
     separator?: string;
     normalizeHeaders?: boolean;
+    headerMapping?: Record<string, string>;
   } = {}
 ): ParsedCSVResult {
-  const { normalizeHeaders = false } = options;
+  const { normalizeHeaders = false, headerMapping } = options;
   const separator = options.separator || detectSeparator(csvString);
 
-  // Split lines and filter empty
-  const lines = csvString
+  // Remove BOM if still present after decoding
+  let cleanedCSV = csvString;
+  if (cleanedCSV.startsWith('ï»¿')) {
+    cleanedCSV = cleanedCSV.substring(3);
+  }
+  if (cleanedCSV.charCodeAt(0) === 0xFEFF) {
+    cleanedCSV = cleanedCSV.substring(1);
+  }
+
+  // Split lines and filter empty/whitespace-only lines
+  const lines = cleanedCSV
     .split(/\r?\n/)
     .map(line => line.trim())
-    .filter(line => line.length > 0);
+    .filter(line => line.length > 0 && line !== '');
 
-  if (lines.length < 1) {
+  // Find the first line that looks like a header (has separator)
+  const headerLineIndex = lines.findIndex(line => line.includes(separator));
+  if (headerLineIndex === -1 || lines.length < headerLineIndex + 2) {
     return { headers: [], data: [], rawHeaders: [] };
   }
 
-  // Parse headers
-  const rawHeaders = parseCSVLine(lines[0], separator);
-  const headers = normalizeHeaders 
-    ? rawHeaders.map(normalizeHeader) 
-    : rawHeaders;
+  // Parse headers from the first valid line
+  const rawHeaders = parseCSVLine(lines[headerLineIndex], separator);
+  
+  // Apply header mapping if provided (e.g., TextBox9 -> Patrimônio)
+  let headers: string[];
+  if (headerMapping) {
+    headers = rawHeaders.map(h => headerMapping[h] || h);
+  } else if (normalizeHeaders) {
+    headers = rawHeaders.map(normalizeHeader);
+  } else {
+    headers = rawHeaders;
+  }
 
-  // Parse data rows
-  const data = lines.slice(1).map((line, index) => {
+  // Parse data rows (starting after header line)
+  const data = lines.slice(headerLineIndex + 1).map((line, index) => {
     const values = parseCSVLine(line, separator);
     const obj: Record<string, unknown> = { id: `row-${index}` };
 
     headers.forEach((header, i) => {
       const value = values[i] || '';
-      // Try to parse numbers
-      const numValue = parseFloat(value.replace(',', '.'));
-      obj[header] = !isNaN(numValue) && value.trim() !== '' ? numValue : value;
+      // Try to parse numbers (handle both . and , as decimal separator)
+      const cleanValue = value.replace(/"/g, '').trim();
+      const numValue = parseFloat(cleanValue.replace(',', '.'));
+      obj[header] = !isNaN(numValue) && cleanValue !== '' ? numValue : cleanValue;
     });
 
     return obj;
@@ -133,6 +164,7 @@ export function parseBase64CSVToObjects(
   options: {
     separator?: string;
     normalizeHeaders?: boolean;
+    headerMapping?: Record<string, string>;
   } = {}
 ): ParsedCSVResult {
   const csvString = decodeBase64(base64String);
