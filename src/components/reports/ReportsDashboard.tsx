@@ -143,10 +143,14 @@ export function ReportsDashboard() {
     setCurrentFilters(null);
   };
 
-  const handleFiltersSubmit = useCallback((filters: unknown) => {
+  const handleFiltersSubmit = useCallback(async (filters: unknown) => {
     setCurrentFilters(filters);
-    fetchReportData(activeTab, filters, 0);
-    toast.success('Relatório gerado com sucesso!');
+    try {
+      await fetchReportData(activeTab, filters, 0);
+      toast.success('Relatório gerado com sucesso!');
+    } catch (err) {
+      toast.error('Erro ao gerar relatório');
+    }
   }, [activeTab, fetchReportData]);
 
   const handlePageChange = useCallback((page: number) => {

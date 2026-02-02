@@ -80,6 +80,12 @@ export interface ReportState {
 // Export format options
 export type ExportFormat = 'pdf' | 'xlsx' | 'csv';
 
+// Report mapping configuration
+export interface ReportMappingConfig {
+  reportId: string;
+  parameterMapping: Record<string, string>;
+}
+
 // Permission levels
 export type PermissionLevel = 'viewer' | 'editor' | 'admin';
 
