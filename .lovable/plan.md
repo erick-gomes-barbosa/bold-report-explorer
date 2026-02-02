@@ -1,154 +1,162 @@
 
-# Plano: Corrigir Scroll e Corte de Filtros em Telas Pequenas
 
-## Problema Identificado
+# Plano: Corrigir Estouro de DIV em Mobile e Adicionar IDs de Navegacao
 
-Analisando a imagem enviada e o código atual:
+## Problemas Identificados
 
-1. **Filtros estao sendo cortados**: A `max-h-[calc(100vh-180px)]` aplicada ao FiltersSidebar nao esta funcionando corretamente em telas menores porque:
-   - O container pai usa `grid` sem altura explicita
-   - O `min-h-0` no container do grid nao esta propagando corretamente para os filhos
-   - Em telas pequenas (notebooks), o calculo de 180px de offset pode nao ser suficiente
+### 1. Estouro de DIV na Navegacao Mobile
+O texto "Bens por Necessidade" e extende alem do limite do TabsTrigger porque:
+- O componente TabsTrigger possui `whitespace-nowrap` por padrao
+- O TabsList usa `grid-cols-3` que divide igualmente o espaco
+- Nao ha truncamento ou abreviacao do texto em telas pequenas
 
-2. **ScrollArea nao esta funcionando**: O componente `ScrollArea` do Radix UI precisa de uma altura explicita no container pai para funcionar corretamente. Atualmente:
-   - O grid container nao tem altura definida
-   - O `flex-1 min-h-0` no ScrollArea nao tem referencia de altura maxima
-
-## Causa Raiz
-
-```text
-Estrutura atual com problema:
-
-<main className="flex-1 container... overflow-hidden flex flex-col min-h-0">
-  <Tabs className="flex-1 flex flex-col min-h-0">
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0 mt-6">
-      │
-      ├── <div className="hidden lg:block lg:col-span-1 min-h-0">  ← SEM ALTURA DEFINIDA
-      │     <FiltersSidebar max-h-[calc(100vh-180px)]/>
-      │
-      └── <div className="lg:col-span-3 min-h-0 overflow-auto">
-            <DataTable/>
-
-Problema: O grid nao propaga altura corretamente para os filhos em viewports menores
-```
+### 2. Ausencia de IDs para Testes Automatizados
+Os elementos de navegacao (TabsTrigger) nao possuem IDs, dificultando a automacao de testes.
 
 ## Solucao Proposta
 
-### 1. Usar Flexbox ao inves de Grid no Layout Principal
+### 1. Ajustar Layout do TabsList para Mobile
 
-Substituir o grid por flexbox que propaga altura de forma mais previsivel:
-
-```text
-Antes: grid grid-cols-1 lg:grid-cols-4
-Depois: flex flex-col lg:flex-row
-```
-
-### 2. Ajustar FiltersSidebar para Altura Responsiva
-
-Usar altura relativa ao container ao inves de calculo fixo de viewport:
+Modificar o TabsList para permitir que os triggers se ajustem ao conteudo em vez de forcarem divisao igual:
 
 ```text
-Antes: max-h-[calc(100vh-180px)]
-Depois: h-full max-h-full (altura do container pai) com overflow interno
+Antes:
+<TabsList className="grid w-full sm:w-auto grid-cols-3">
+
+Depois:
+<TabsList className="flex flex-wrap w-full sm:w-auto gap-1">
 ```
 
-### 3. Garantir Propagacao de Altura no Container
+### 2. Remover whitespace-nowrap dos Triggers em Mobile
 
-Adicionar altura explicita no container dos filtros:
+Permitir que o texto quebre em mobile, mas mantenha em uma linha em telas maiores:
 
 ```text
-<div className="hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0 h-full">
+Antes:
+<TabsTrigger value="bens-necessidade" className="gap-2">
+
+Depois:
+<TabsTrigger 
+  value="bens-necessidade" 
+  id="tab-bens-necessidade"
+  className="gap-2 flex-1 sm:flex-none whitespace-normal sm:whitespace-nowrap text-center"
+>
 ```
+
+### 3. Usar Texto Abreviado em Mobile
+
+Usar textos mais curtos em telas pequenas:
+
+```text
+Antes:
+<span className="text-xs sm:text-sm">Bens por Necessidade</span>
+
+Depois:
+<span className="hidden sm:inline text-sm">Bens por Necessidade</span>
+<span className="sm:hidden text-xs">Bens</span>
+```
+
+### 4. Adicionar IDs aos Elementos de Navegacao
+
+Adicionar IDs unicos para facilitar testes automatizados:
+
+| Elemento | ID |
+|----------|-----|
+| Tab Bens por Necessidade | `tab-bens-necessidade` |
+| Tab Inventario | `tab-inventario` |
+| Tab Auditoria | `tab-auditoria` |
+| TabsList | `tabs-list-reports` |
+| Botao Filtros Mobile | `btn-mobile-filters` |
 
 ## Alteracoes Detalhadas
 
 ### Arquivo: ReportsDashboard.tsx
 
-**Mudanca na area do grid (linha 272):**
+**Linhas 243-256 - Modificar TabsList e TabsTriggers:**
 
 ```text
 Antes:
-<div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0 mt-6">
-  <div className="hidden lg:block lg:col-span-1 min-h-0">
-    <FiltersSidebar ... />
-  </div>
-  <div className="lg:col-span-3 min-h-0 overflow-auto">
+<TabsList className="grid w-full sm:w-auto grid-cols-3">
+  <TabsTrigger value="bens-necessidade" className="gap-2">
+    <Package className="h-4 w-4 hidden sm:inline" />
+    <span className="text-xs sm:text-sm">Bens por Necessidade</span>
+  </TabsTrigger>
+  <TabsTrigger value="inventario" className="gap-2">
+    <ClipboardList className="h-4 w-4 hidden sm:inline" />
+    <span className="text-xs sm:text-sm">Inventário</span>
+  </TabsTrigger>
+  <TabsTrigger value="auditoria" className="gap-2">
+    <Search className="h-4 w-4 hidden sm:inline" />
+    <span className="text-xs sm:text-sm">Auditoria</span>
+  </TabsTrigger>
+</TabsList>
 
 Depois:
-<div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 mt-6 overflow-hidden">
-  <div className="hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0 min-h-0 max-h-full">
-    <FiltersSidebar ... />
-  </div>
-  <div className="flex-1 min-w-0 min-h-0 overflow-auto">
+<TabsList id="tabs-list-reports" className="flex flex-wrap w-full sm:w-auto gap-1">
+  <TabsTrigger 
+    value="bens-necessidade" 
+    id="tab-bens-necessidade"
+    className="gap-1.5 flex-1 sm:flex-none min-w-0"
+  >
+    <Package className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+    <span className="hidden sm:inline text-sm truncate">Bens por Necessidade</span>
+    <span className="sm:hidden text-xs">Bens</span>
+  </TabsTrigger>
+  <TabsTrigger 
+    value="inventario" 
+    id="tab-inventario"
+    className="gap-1.5 flex-1 sm:flex-none min-w-0"
+  >
+    <ClipboardList className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+    <span className="hidden sm:inline text-sm truncate">Inventário</span>
+    <span className="sm:hidden text-xs">Inventário</span>
+  </TabsTrigger>
+  <TabsTrigger 
+    value="auditoria" 
+    id="tab-auditoria"
+    className="gap-1.5 flex-1 sm:flex-none min-w-0"
+  >
+    <Search className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+    <span className="hidden sm:inline text-sm truncate">Auditoria</span>
+    <span className="sm:hidden text-xs">Auditoria</span>
+  </TabsTrigger>
+</TabsList>
 ```
 
-### Arquivo: FiltersSidebar.tsx
+### Arquivo: MobileFiltersDrawer.tsx
 
-**Mudanca no container principal (linha 16):**
+**Linha 23 - Adicionar ID ao botao de filtros mobile:**
 
 ```text
 Antes:
-<div className="bg-card rounded-lg border border-border flex flex-col max-h-[calc(100vh-180px)] overflow-hidden">
+<Button variant="outline" className="lg:hidden gap-2">
 
 Depois:
-<div className="bg-card rounded-lg border border-border flex flex-col h-full overflow-hidden">
+<Button variant="outline" id="btn-mobile-filters" className="lg:hidden gap-2">
 ```
 
-Esta mudanca faz o FiltersSidebar ocupar 100% da altura do container pai, que agora tem altura controlada pelo flexbox.
+## Resumo dos IDs Adicionados
 
-### Arquivo: scroll-area.tsx
-
-Garantir que o Viewport tenha `overflow-y-auto`:
-
-```text
-Linha 11 - adicionar overflow explicito:
-<ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] overflow-y-auto">
-```
-
-## Estrutura Final
-
-```text
-<main className="flex-1 ... overflow-hidden flex flex-col min-h-0">
-  │
-  └── <Tabs className="flex-1 flex flex-col min-h-0">
-        │
-        ├── TabsList (flex-shrink-0)
-        │
-        └── <div className="flex flex-row ... flex-1 min-h-0 overflow-hidden">
-              │
-              ├── <div className="lg:w-72 flex-shrink-0 min-h-0 max-h-full">
-              │     │
-              │     └── <FiltersSidebar className="h-full">
-              │           │
-              │           ├── Header (flex-shrink-0)
-              │           │
-              │           └── <ScrollArea className="flex-1 min-h-0">
-              │                 └── Filtros (scroll interno)
-              │
-              └── <div className="flex-1 min-w-0 overflow-auto">
-                    └── DataTable
-```
+| Componente | ID | Finalidade |
+|------------|-----|------------|
+| TabsList | `tabs-list-reports` | Container da navegacao |
+| Tab Bens | `tab-bens-necessidade` | Navegar para aba de bens |
+| Tab Inventario | `tab-inventario` | Navegar para aba de inventario |
+| Tab Auditoria | `tab-auditoria` | Navegar para aba de auditoria |
+| Botao Filtros | `btn-mobile-filters` | Abrir drawer de filtros em mobile |
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/reports/ReportsDashboard.tsx` | Trocar grid por flexbox, adicionar largura fixa ao container de filtros |
-| `src/components/reports/FiltersSidebar.tsx` | Usar `h-full` ao inves de `max-h-[calc(...)]` |
-| `src/components/ui/scroll-area.tsx` | Adicionar overflow explicito no Viewport |
+| `src/components/reports/ReportsDashboard.tsx` | Ajustar layout de tabs e adicionar IDs |
+| `src/components/reports/MobileFiltersDrawer.tsx` | Adicionar ID ao botao de filtros |
 
-## Beneficios da Solucao
+## Resultado Esperado
 
-1. **Flexbox propaga altura corretamente** - Diferente do grid, flexbox com `min-h-0` garante que filhos respeitem limites
-2. **Largura fixa para filtros** - `lg:w-72 xl:w-80` garante espaco consistente independente do conteudo
-3. **Scroll independente funcional** - Com altura explicita, o ScrollArea funcionara corretamente
-4. **Responsivo** - Em telas menores que `lg`, os filtros ficam no drawer mobile (comportamento existente)
-5. **Nao corta conteudo** - `h-full` + container com altura propagada garante que filtros preencham o espaco disponivel
+1. Em mobile, os tabs exibem texto abreviado ("Bens", "Inventario", "Auditoria")
+2. Nenhum estouro de DIV na area de navegacao
+3. Todos os elementos de navegacao possuem IDs para automacao de testes
+4. Em desktop, os tabs exibem texto completo com icones
+5. Layout responsivo funciona corretamente em todas as resolucoes
 
-## Teste de Validacao
-
-Apos implementacao, verificar:
-1. Em tela de notebook (1366x768), filtros devem ser visiveis e scrollaveis
-2. Scroll dentro dos filtros nao deve afetar pagina principal
-3. Botao "Gerar" deve estar sempre visivel na area de filtros
-4. DataTable deve ter seu proprio scroll independente
