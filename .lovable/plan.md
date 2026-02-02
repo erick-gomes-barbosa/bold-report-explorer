@@ -1,128 +1,211 @@
 
-# Plano: Adicionar IDs aos Componentes e Corrigir Mapeamento de Parâmetros
+# Plano: Corrigir Formato de Parâmetros para API Bold Reports
 
-## Objetivo
-Adicionar identificadores (IDs) a todos os componentes de filtro para facilitar testes automatizados e corrigir o mapeamento de valores disponíveis da API Bold Reports.
+## Problema Identificado
 
-## Problemas Identificados
+A exportação de relatórios está retornando dados vazios (apenas headers CSV) porque os parâmetros não estão sendo enviados no formato correto esperado pela API Bold Reports Cloud.
 
-### 1. Mapeamento Incompleto de Valores
-O hook `getOptionsForParameter` atualmente só suporta:
-```text
-AvailableValues: [{ DisplayField, ValueField }]
+### Formato Atual (Incorreto)
+```json
+{
+  "ReportId": "8fae90ee-...",
+  "ExportType": "CSV",
+  "FilterParameters": "{\"param_unidade\":[\"value\"]}"
+}
 ```
 
-Mas a API Bold Reports pode retornar também:
-```text
-ValidValues: [{ Label, Value }]
+### Formato Esperado pela API Bold Reports
+```json
+{
+  "ReportId": "8fae90ee-...",
+  "ExportType": "CSV",
+  "Parameters": [
+    {
+      "Name": "param_unidade",
+      "Labels": ["Label Exibido"],
+      "Values": ["valor_real"]
+    }
+  ]
+}
 ```
 
-### 2. Componentes Sem IDs
-Nenhum componente de filtro possui atributo `id`, dificultando:
-- Testes automatizados
-- Depuração visual
-- Seleção programática de elementos
+## Evidências do Problema
+
+| Evidência | Detalhe |
+|-----------|---------|
+| Tamanho do CSV | 75 bytes (apenas headers, sem dados) |
+| Base64 Length | 100 caracteres |
+| CSV Decodificado | `TextBox9,TextBox10,TextBox11,...` (sem linhas de dados) |
 
 ## Alterações Necessárias
 
-### 1. Atualizar Hook `useReportParameters.ts`
-Modificar `getOptionsForParameter` para suportar ambos os formatos:
+### 1. Edge Function: Reformatar Parâmetros
+
+**Arquivo:** `supabase/functions/bold-reports/index.ts`
+
+Modificar a ação `export-report` para transformar os parâmetros no formato correto:
 
 ```text
-Fluxo de mapeamento:
-┌─────────────────────────────────────────────────────────────┐
-│ API Bold Reports retorna parâmetro                          │
-├─────────────────────────────────────────────────────────────┤
-│ if (param.AvailableValues)                                  │
-│   → map({ DisplayField, ValueField })                       │
-│                                                             │
-│ else if (param.ValidValues)                                 │
-│   → map({ Label → label, Value → value })                   │
-│                                                             │
-│ else                                                        │
-│   → return []                                               │
-└─────────────────────────────────────────────────────────────┘
+Antes:
+  FilterParameters: '{"param_unidade":["value"]}'
+
+Depois:
+  Parameters: [
+    { Name: "param_unidade", Labels: ["value"], Values: ["value"] }
+  ]
 ```
 
-### 2. Adicionar Prop `id` ao MultiSelect
-Modificar componente para aceitar e aplicar `id`:
+### 2. Criar Função Auxiliar para Formatação
+
+Adicionar função `formatBoldReportParameters` que:
+
+1. Recebe objeto `{ param_name: [values] }`
+2. Filtra arrays vazios (omitir parâmetros não preenchidos)
+3. Retorna array no formato:
+```typescript
+[
+  { Name: string, Labels: string[], Values: string[] }
+]
+```
+
+### 3. Atualizar Frontend para Enviar Labels
+
+**Arquivo:** `src/hooks/useReportsData.ts` e `src/config/reportMapping.ts`
+
+Modificar `mapFiltersToBoldParameters` para incluir labels quando disponíveis:
 
 ```text
-interface MultiSelectProps {
-  ...
-  id?: string;  // ← Novo
-}
+Estrutura atual:
+  { param_unidade: ["uuid-1", "uuid-2"] }
 
-<Button id={id} ...>
+Nova estrutura:
+  {
+    param_unidade: {
+      labels: ["Ministério da Tecnologia", "Departamento de TI"],
+      values: ["uuid-1", "uuid-2"]
+    }
+  }
 ```
 
-### 3. Adicionar IDs aos Componentes de Filtro
+## Fluxo de Dados Corrigido
 
-| Componente | ID Proposto |
-|------------|-------------|
-| Órgão/Unidade (MultiSelect) | `filter-orgao-unidade` |
-| Grupo (MultiSelect) | `filter-grupo` |
-| Situação (MultiSelect) | `filter-situacao` |
-| Estado de Conservação (MultiSelect) | `filter-conservacao` |
-| Preço Mínimo (Input) | `filter-preco-min` |
-| Preço Máximo (Input) | `filter-preco-max` |
-| Data Início (Button) | `filter-data-inicio` |
-| Data Fim (Button) | `filter-data-fim` |
-| Botão Limpar | `btn-filter-reset` |
-| Botão Gerar | `btn-filter-submit` |
-| Formulário | `form-bens-necessidade` |
+```text
+┌────────────────────────────────────────────────────────────┐
+│ BensNecessidadeFilters                                     │
+│                                                            │
+│ form.handleSubmit → {                                      │
+│   orgaoUnidade: ["uuid-1"],                                │
+│   grupo: [],                                               │
+│   situacao: ["em_uso"],                                    │
+│   ...                                                      │
+│ }                                                          │
+└─────────────────────────┬──────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────┐
+│ mapFiltersToBoldParameters (atualizado)                    │
+│                                                            │
+│ Entrada: { orgaoUnidade: ["uuid-1"], situacao: ["em_uso"]} │
+│                                                            │
+│ Saída: {                                                   │
+│   param_unidade: { labels: ["Nome"], values: ["uuid-1"] }, │
+│   param_situacao: { labels: ["Em Uso"], values: ["em_uso"]│
+│ }                                                          │
+└─────────────────────────┬──────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────┐
+│ Edge Function: bold-reports                                │
+│                                                            │
+│ formatBoldReportParameters(parameters)                     │
+│                                                            │
+│ Body enviado para API:                                     │
+│ {                                                          │
+│   ReportId: "8fae90ee-...",                                │
+│   ExportType: "CSV",                                       │
+│   Parameters: [                                            │
+│     { Name: "param_unidade",                               │
+│       Labels: ["Nome"],                                    │
+│       Values: ["uuid-1"] },                                │
+│     { Name: "param_situacao",                              │
+│       Labels: ["Em Uso"],                                  │
+│       Values: ["em_uso"] }                                 │
+│   ]                                                        │
+│ }                                                          │
+└─────────────────────────┬──────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────┐
+│ Bold Reports API Response                                  │
+│                                                            │
+│ FileContent: "base64EncodedCSVWithData..."                 │
+│ (CSV com dados filtrados corretamente)                     │
+└────────────────────────────────────────────────────────────┘
+```
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useReportParameters.ts` | Suportar `ValidValues` além de `AvailableValues` |
-| `src/components/ui/multi-select.tsx` | Adicionar prop `id` |
-| `src/components/reports/filters/BensNecessidadeFilters.tsx` | Adicionar IDs a todos os componentes |
+| `supabase/functions/bold-reports/index.ts` | Reformatar parâmetros para array com Name/Labels/Values |
+| `src/config/reportMapping.ts` | Modificar `mapFiltersToBoldParameters` para incluir labels |
+| `src/hooks/useReportsData.ts` | Passar dados do formulário com labels |
+| `src/components/reports/filters/BensNecessidadeFilters.tsx` | Incluir labels dos valores selecionados |
 
 ## Detalhes Técnicos
 
-### Hook - Mapeamento Dual de Valores
+### Função formatBoldReportParameters (Edge Function)
 
 ```text
-getOptionsForParameter(paramName):
-  1. Buscar parâmetro por Name
-  2. Verificar se existe AvailableValues
-     → Se sim: mapear DisplayField → label, ValueField → value
-  3. Senão, verificar ValidValues
-     → Se sim: mapear Label → label, Value → value
-  4. Retornar array de MultiSelectOption
+interface BoldParameter {
+  Name: string;
+  Labels: string[];
+  Values: string[];
+}
+
+function formatBoldReportParameters(
+  params: Record<string, { labels?: string[], values: string[] }>
+): BoldParameter[] {
+  return Object.entries(params)
+    .filter(([_, data]) => data.values.length > 0)
+    .map(([name, data]) => ({
+      Name: name,
+      Labels: data.labels || data.values,
+      Values: data.values
+    }));
+}
 ```
 
-### MultiSelect - Nova Prop
+### Tratamento de Arrays Vazios
+
+Conforme o guia fornecido, parâmetros vazios devem ser **omitidos** (não enviados) para que o Bold Reports aplique o comportamento padrão de "Selecionar Todos".
 
 ```text
-Props atuais:
-  - options, value, onChange, placeholder, emptyMessage, className, disabled
+Filtros do usuário:
+  param_unidade: ["uuid"]   ← Enviar
+  param_grupo: []           ← NÃO enviar (omitir)
+  param_situacao: ["ativo"] ← Enviar
+  param_estado: []          ← NÃO enviar (omitir)
 
-Nova prop:
-  - id?: string  → Aplicado ao Button trigger do Popover
+Parameters enviados:
+  [
+    { Name: "param_unidade", Labels: [...], Values: [...] },
+    { Name: "param_situacao", Labels: [...], Values: [...] }
+  ]
 ```
 
-### Estrutura de IDs
+## Checklist de Validação
 
-```text
-form-bens-necessidade
-├── filter-orgao-unidade
-├── filter-grupo
-├── filter-situacao
-├── filter-conservacao
-├── filter-preco-min
-├── filter-preco-max
-├── filter-data-inicio
-├── filter-data-fim
-├── btn-filter-reset
-└── btn-filter-submit
-```
+Antes do envio à API:
+- [ ] Todos os parâmetros têm `Name`, `Labels` e `Values`
+- [ ] `Labels` e `Values` são sempre arrays
+- [ ] Arrays `Labels` e `Values` têm o mesmo tamanho
+- [ ] Parâmetros com valores vazios são omitidos
+- [ ] Não há valores `null` ou `undefined`
 
 ## Resultado Esperado
 
-1. Todos os componentes de filtro terão IDs únicos e descritivos
-2. O hook suportará ambos os formatos de valores da API Bold Reports
-3. Testes automatizados poderão localizar elementos facilmente
-4. Depuração via DevTools será simplificada
+1. Os parâmetros serão enviados no formato correto para a API
+2. O Bold Reports aplicará os filtros corretamente
+3. O CSV retornado conterá dados reais (não apenas headers)
+4. A tabela exibirá os dados filtrados conforme selecionado pelo usuário
