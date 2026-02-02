@@ -15,14 +15,14 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
   'bens-necessidade': {
     reportId: '8fae90ee-011b-40d4-a53a-65b74f97b3cb',
     parameterMapping: {
-      orgaoUnidade: 'OrgaoUnidade',
-      grupo: 'Grupo',
-      situacao: 'Situacao',
-      conservacao: 'Conservacao',
-      faixaPrecoMin: 'PrecoMinimo',
-      faixaPrecoMax: 'PrecoMaximo',
-      dataAquisicaoInicio: 'DataInicio',
-      dataAquisicaoFim: 'DataFim',
+      orgaoUnidade: 'param_unidade',
+      grupo: 'param_grupo',
+      situacao: 'param_situacao',
+      conservacao: 'param_estado',
+      faixaPrecoMin: 'param_preco_inicial',
+      faixaPrecoMax: 'param_preco_final',
+      dataAquisicaoInicio: 'param_dataAquisicao_inicio',
+      dataAquisicaoFim: 'param_dataAquisicao_final',
     }
   },
   'inventario': {
