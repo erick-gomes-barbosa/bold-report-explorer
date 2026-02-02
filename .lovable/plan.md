@@ -1,171 +1,173 @@
 
-# Plano: Corrigir Endpoint e Formato de Parâmetros para Exportação Bold Reports
+# Plano: Corrigir Responsividade e Scroll Independente dos Filtros
 
-## Problema Raiz Identificado
+## Problemas Identificados
 
-A investigação revelou que:
+### 1. Layout Quebrando ao Aplicar Filtros
+Quando os filtros são aplicados e o botão "Gerar" é clicado:
+- A sidebar de filtros não possui altura máxima definida
+- O conteúdo expande sem contenção adequada
+- O `sticky top-24` não funciona corretamente sem altura definida no container
 
-1. **O endpoint usado está incorreto** - A Edge Function usa `/v5.0/reports/export` com um array `Parameters`, mas este endpoint ignora os filtros
-2. **O formato do corpo da requisição está errado** - A API espera `FilterParameters` como uma STRING JSON, não um array de objetos
+### 2. Scroll dos Filtros Afeta a Página Inteira
+Atualmente:
+- Ao scrollar os filtros, toda a página sobe
+- Não há scroll independente para a área de filtros
+- O scrollbar padrão ocupa espaço visual
 
-### Evidências do Problema
+## Solução Proposta
 
-| Teste | Tamanho CSV Retornado |
-|-------|----------------------|
-| Sem filtros | 15639 bytes (128 rows) |
-| Com param_unidade filtrado | 15639 bytes (128 rows) |
-| Com param_preco filtrado (500-600) | 15639 bytes (128 rows) |
-
-O tamanho é SEMPRE o mesmo, provando que a API está ignorando os parâmetros.
-
-### Documentação da API Bold Reports v1.0
-
-A API v1.0 tem um endpoint específico para exportação COM filtros:
-
-**Endpoint:**
-```
-POST /v1.0/reports/{reportId}/{exportType}/export-filter
-```
-
-**Formato do Body:**
-```json
-{
-  "FilterParameters": "{'ParamName':['value1','value2'],'AnotherParam':['value']}"
-}
-```
-
-- `FilterParameters` é uma **STRING JSON** (não um array de objetos)
-- Valores são arrays de strings MESMO para valores únicos
-- Usa aspas simples dentro da string JSON
-
-## Alterações Necessárias
-
-### 1. Edge Function: Alterar Endpoint e Formato
-
-**Arquivo:** `supabase/functions/bold-reports/index.ts`
-
-Modificar a ação `export-report` para:
-
-1. Usar o endpoint correto: `/v1.0/reports/{reportId}/{exportType}/export-filter`
-2. Formatar parâmetros como string JSON com aspas simples
-3. Enviar no campo `FilterParameters` ao invés de `Parameters`
-
-### 2. Estrutura do Request Body
-
-**Atual (incorreto):**
-```json
-{
-  "ReportId": "8fae90ee-...",
-  "ExportType": "CSV",
-  "Parameters": [
-    { "Name": "param_unidade", "Labels": ["Label"], "Values": ["uuid"] }
-  ]
-}
-```
-
-**Correto:**
-```json
-{
-  "FilterParameters": "{'param_unidade':['uuid-value'],'param_grupo':['uuid1','uuid2']}"
-}
-```
-
-### 3. Função de Formatação de Parâmetros
+### Arquitetura de Layout
 
 ```text
-Fluxo de transformação:
 ┌─────────────────────────────────────────────────────────────┐
-│ Frontend envia:                                             │
-│ {                                                           │
-│   param_unidade: { labels: [...], values: ["uuid-1"] },     │
-│   param_grupo: { labels: [...], values: ["uuid-1","uuid-2"]}│
-│ }                                                           │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
+│ ReportsHeader (sticky top-0)                     height: ~72px│
+└─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
-│ Edge Function transforma para:                              │
+│ main (height: calc(100vh - 72px), overflow: hidden)         │
 │                                                             │
-│ filterString = "{'param_unidade':['uuid-1'],                │
-│                  'param_grupo':['uuid-1','uuid-2']}"        │
-│                                                             │
-│ Body: { "FilterParameters": filterString }                  │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ URL do Request:                                             │
-│ POST /v1.0/reports/{reportId}/CSV/export-filter             │
+│  ┌───────────────┐  ┌─────────────────────────────────────┐ │
+│  │ FiltersSidebar │  │ DataTable Area                      │ │
+│  │               │  │                                     │ │
+│  │ max-height:   │  │ (scroll vertical próprio)           │ │
+│  │ calc(100vh    │  │                                     │ │
+│  │ - header      │  │                                     │ │
+│  │ - padding)    │  │                                     │ │
+│  │               │  │                                     │ │
+│  │ scroll:       │  │                                     │ │
+│  │ independente  │  │                                     │ │
+│  │ (thin)        │  │                                     │ │
+│  └───────────────┘  └─────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Detalhes Técnicos
+## Alterações Necessárias
 
-### Função para Formatar FilterParameters
+### 1. ReportsDashboard.tsx - Layout Principal
+
+Modificar a estrutura para:
+- Definir altura fixa do container principal baseada em viewport
+- Usar `flex` com `min-h-0` para permitir scroll nos filhos
+- Remover `min-h-screen` que causa overflow
 
 ```text
-function formatFilterParameters(params): string {
-  if (!params || Object.keys(params).length === 0) {
-    return '{}';
-  }
-  
-  const parts = [];
-  for (const [name, data] of Object.entries(params)) {
-    const values = data.values || [];
-    if (values.length > 0) {
-      // Formato: 'ParamName':['value1','value2']
-      const valuesStr = values
-        .map(v => `'${v}'`)
-        .join(',');
-      parts.push(`'${name}':[${valuesStr}]`);
-    }
-  }
-  
-  return `{${parts.join(',')}}`;
-}
+Antes:
+  <div className="min-h-screen bg-background">
+    <main className="container...">
+      <div className="grid grid-cols-1 lg:grid-cols-4">
+        <div className="hidden lg:block lg:col-span-1">
+          <div className="sticky top-24">
+            <FiltersSidebar />
+
+Depois:
+  <div className="h-screen flex flex-col bg-background overflow-hidden">
+    <main className="flex-1 container... overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-4 h-full">
+        <div className="hidden lg:block lg:col-span-1 h-full min-h-0">
+          <FiltersSidebar />
 ```
 
-### Alteração na Edge Function
+### 2. FiltersSidebar.tsx - Scroll Independente
 
-**Mudanças no case `export-report`:**
-
-1. Construir a URL com reportId e exportType no path
-2. Formatar parâmetros como string JSON com aspas simples
-3. Enviar body com apenas `FilterParameters`
+Adicionar ScrollArea com altura máxima calculada e scrollbar mínimo:
 
 ```text
-URL anterior: ${BASE_URL}/v5.0/reports/export
-URL nova:     ${BASE_URL}/v1.0/reports/${reportId}/${exportFormat}/export-filter
+Antes:
+  <div className="bg-card rounded-lg border border-border p-4">
+    <div className="flex items-center gap-2 mb-4...">Filtros</div>
+    {reportType === 'bens-necessidade' && <BensNecessidadeFilters />}
 
-Body anterior: { ReportId, ExportType, Parameters: [...] }
-Body novo:     { FilterParameters: "{'param':['value']}" }
+Depois:
+  <div className="bg-card rounded-lg border border-border flex flex-col 
+                  max-h-[calc(100vh-180px)] overflow-hidden">
+    <div className="flex items-center gap-2 p-4 pb-3 border-b...">Filtros</div>
+    <ScrollArea className="flex-1 min-h-0">
+      <div className="p-4 pt-3">
+        {reportType === 'bens-necessidade' && <BensNecessidadeFilters />}
+      </div>
+    </ScrollArea>
+  </div>
+```
+
+### 3. ScrollBar - Scrollbar Mínimo
+
+Modificar o componente ScrollBar para ter largura mínima:
+
+```text
+Antes:
+  orientation === "vertical" && "h-full w-2.5 border-l..."
+
+Depois:
+  orientation === "vertical" && "h-full w-1.5 border-l..."
+```
+
+### 4. CSS Global - Estilo de Scrollbar Fino
+
+Adicionar estilos para scrollbar nativo fino como fallback:
+
+```text
+/* Scrollbar fino para áreas de filtro */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
 ```
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/bold-reports/index.ts` | Alterar endpoint e formato de parâmetros |
+| `src/components/reports/ReportsDashboard.tsx` | Ajustar layout para altura fixa baseada em viewport |
+| `src/components/reports/FiltersSidebar.tsx` | Adicionar ScrollArea com altura máxima e scroll independente |
+| `src/components/ui/scroll-area.tsx` | Reduzir largura do scrollbar vertical para mínimo |
+| `src/index.css` | Adicionar estilos de scrollbar fino como fallback |
 
-## Casos Especiais a Tratar
+## Detalhes Técnicos
 
-1. **Sem filtros selecionados**: Enviar `FilterParameters: "{}"` ou omitir o parâmetro
-2. **Valores com aspas simples**: Escapar aspas dentro dos valores
-3. **Tipos de dados**: Todos os valores devem ser strings (mesmo números e datas)
+### Cálculo de Altura Máxima dos Filtros
+
+```text
+max-h-[calc(100vh-180px)]
+
+Onde:
+- 100vh = altura total da viewport
+- 72px = altura do header
+- 24px = padding superior do main
+- 24px = padding inferior do main
+- ~60px = margem de segurança para tabs e espaçamento
+```
+
+### Prevenção de Layout Shift
+
+Para evitar quebra de layout quando o estado de loading é ativado:
+
+- O DataTable já usa `<Skeleton>` que mantém altura consistente
+- O FiltersSidebar terá altura máxima fixa, impedindo expansão
+- O grid usa `min-h-0` para permitir que filhos com `flex-1` respeitem limites
+
+### Comportamento do Scroll Independente
+
+```text
+Interação do usuário:
+  │
+  ├─ Scroll dentro da área de filtros
+  │   └─ Apenas os filtros rolam (ScrollArea interno)
+  │   └─ Página principal permanece fixa
+  │
+  └─ Scroll fora da área de filtros
+      └─ Comportamento normal do navegador
+```
 
 ## Resultado Esperado
 
-1. O endpoint `/v1.0/reports/{id}/{format}/export-filter` será usado
-2. Os parâmetros serão formatados corretamente como string JSON
-3. A API Bold Reports aplicará os filtros corretamente
-4. O CSV retornado terá tamanho diferente dependendo dos filtros aplicados
-5. A tabela exibirá apenas os dados filtrados
-
-## Testes para Validação
-
-Após a implementação, testar:
-
-1. Exportar sem filtros - deve retornar todos os dados
-2. Exportar com 1 filtro (param_unidade) - deve retornar subset
-3. Exportar com múltiplos filtros - deve retornar subset menor
-4. Verificar que o tamanho do CSV muda com filtros diferentes
+1. Layout não quebra ao aplicar filtros ou gerar relatório
+2. Filtros têm scroll independente que não afeta a página
+3. Scrollbar dos filtros é fino e discreto
+4. Altura dos componentes é calculada dinamicamente baseada na viewport
+5. Experiência responsiva mantida em diferentes tamanhos de tela
