@@ -36,17 +36,20 @@ export function MultiSelect({
   disabled = false,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
+  
+  // Ensure value is always an array
+  const safeValue = Array.isArray(value) ? value : [];
 
   const handleSelect = (optionValue: string) => {
-    const newValue = value.includes(optionValue)
-      ? value.filter((v) => v !== optionValue)
-      : [...value, optionValue];
+    const newValue = safeValue.includes(optionValue)
+      ? safeValue.filter((v) => v !== optionValue)
+      : [...safeValue, optionValue];
     onChange(newValue);
   };
 
   const handleRemove = (optionValue: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    onChange(value.filter((v) => v !== optionValue));
+    onChange(safeValue.filter((v) => v !== optionValue));
   };
 
   const handleClearAll = (e: React.MouseEvent) => {
@@ -54,7 +57,7 @@ export function MultiSelect({
     onChange([]);
   };
 
-  const selectedLabels = value
+  const selectedLabels = safeValue
     .map((v) => options.find((opt) => opt.value === v)?.label)
     .filter(Boolean);
 
@@ -67,18 +70,18 @@ export function MultiSelect({
           aria-expanded={open}
           className={cn(
             'w-full justify-between font-normal min-h-10 h-auto',
-            !value.length && 'text-muted-foreground',
+            !safeValue.length && 'text-muted-foreground',
             className
           )}
           disabled={disabled}
         >
           <div className="flex flex-wrap gap-1 flex-1 text-left">
-            {value.length === 0 ? (
+            {safeValue.length === 0 ? (
               <span>{placeholder}</span>
-            ) : value.length <= 2 ? (
+            ) : safeValue.length <= 2 ? (
               selectedLabels.map((label, index) => (
                 <Badge
-                  key={value[index]}
+                  key={safeValue[index]}
                   variant="secondary"
                   className="mr-1 mb-0.5"
                 >
@@ -89,7 +92,7 @@ export function MultiSelect({
                       e.preventDefault();
                       e.stopPropagation();
                     }}
-                    onClick={(e) => handleRemove(value[index], e)}
+                    onClick={(e) => handleRemove(safeValue[index], e)}
                   >
                     <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   </button>
@@ -97,7 +100,7 @@ export function MultiSelect({
               ))
             ) : (
               <Badge variant="secondary" className="mr-1">
-                {value.length} selecionados
+                {safeValue.length} selecionados
                 <button
                   className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   onMouseDown={(e) => {
@@ -123,7 +126,7 @@ export function MultiSelect({
           ) : (
             <div className="p-1">
               {options.map((option) => {
-                const isSelected = value.includes(option.value);
+                const isSelected = safeValue.includes(option.value);
                 return (
                   <div
                     key={option.value}
