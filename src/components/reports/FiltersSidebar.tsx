@@ -13,7 +13,7 @@ interface FiltersSidebarProps {
 
 export function FiltersSidebar({ reportType, onSubmit, loading }: FiltersSidebarProps) {
   return (
-    <div className="bg-card rounded-lg border border-border flex flex-col max-h-[calc(100vh-180px)] overflow-hidden">
+    <div className="bg-card rounded-lg border border-border flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 p-4 pb-3 border-b border-border flex-shrink-0">
         <Filter className="h-5 w-5 text-primary" />
         <h3 className="font-semibold text-foreground">Filtros</h3>
