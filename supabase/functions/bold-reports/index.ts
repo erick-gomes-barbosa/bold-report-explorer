@@ -324,65 +324,68 @@ serve(async (req) => {
         );
 
       case 'export-report':
-        // API Cloud v5.0 endpoint: POST /v5.0/reports/export
-        // Parameters must be an array of { Name, Labels, Values }
-        // Documentation: https://documentation.boldreports.com/embedded/rest-api/api-reference/export-report/
+        // API Cloud v1.0 endpoint for filtered exports: POST /v1.0/reports/{reportId}/{exportType}/export-filter
+        // FilterParameters must be a JSON STRING with single quotes: "{'ParamName':['value1','value2']}"
+        // Documentation: Bold Reports API v1.0 export-filter endpoint
         
         const exportFormat = format || 'PDF';
-        const exportUrl = `${BASE_URL}/v5.0/reports/export`;
         
-        // Transform parameters to Bold Reports format: { Name, Labels, Values }[]
-        interface BoldReportParameter {
-          Name: string;
-          Labels: string[];
-          Values: string[];
-        }
+        // Function to escape single quotes within values
+        const escapeValue = (value: string): string => {
+          return String(value).replace(/'/g, "\\'");
+        };
         
-        const formattedParameters: BoldReportParameter[] = [];
-        
-        if (parameters && typeof parameters === 'object') {
-          Object.entries(parameters).forEach(([name, data]) => {
-            // Handle both formats:
-            // 1. New format: { labels: string[], values: string[] }
-            // 2. Legacy format: string[] (values only)
-            
+        // Function to format parameters as JSON string with single quotes
+        const formatFilterParameters = (params: Record<string, unknown>): string => {
+          if (!params || Object.keys(params).length === 0) {
+            return '{}';
+          }
+          
+          const parts: string[] = [];
+          
+          Object.entries(params).forEach(([name, data]) => {
             let values: string[] = [];
-            let labels: string[] = [];
             
             if (data && typeof data === 'object' && !Array.isArray(data)) {
-              // New format with labels and values
+              // New format: { labels: string[], values: string[] }
               const paramData = data as { labels?: string[]; values?: string[] };
               values = paramData.values || [];
-              labels = paramData.labels || values; // Fallback to values if no labels
             } else if (Array.isArray(data)) {
               // Legacy format: just values array
               values = data.map(String);
-              labels = values; // Use values as labels
             } else if (data !== null && data !== undefined && data !== '') {
               // Single value
               values = [String(data)];
-              labels = values;
             }
             
-            // Only add parameter if it has values (empty arrays = omit for "select all" behavior)
+            // Only add parameter if it has values (empty = omit for "select all" behavior)
             if (values.length > 0) {
-              formattedParameters.push({
-                Name: name,
-                Labels: labels,
-                Values: values
-              });
+              const escapedValues = values.map(v => `'${escapeValue(v)}'`).join(',');
+              parts.push(`'${name}':[${escapedValues}]`);
             }
           });
-        }
-        
-        const exportBody = {
-          ReportId: reportId,
-          ExportType: exportFormat,
-          Parameters: formattedParameters
+          
+          return `{${parts.join(',')}}`;
         };
         
-        console.log('Exporting from:', exportUrl);
-        console.log('Formatted parameters:', JSON.stringify(formattedParameters, null, 2));
+        // Build the export URL with reportId and format in the path
+        const exportUrl = `${BASE_URL}/v1.0/reports/${reportId}/${exportFormat}/export-filter`;
+        
+        // Format parameters as JSON string with single quotes
+        const filterParametersString = formatFilterParameters(parameters || {});
+        
+        // Build request body - FilterParameters is a STRING, not an object
+        const exportBody: { FilterParameters?: string } = {};
+        
+        // Only include FilterParameters if there are actual filters
+        if (filterParametersString !== '{}') {
+          exportBody.FilterParameters = filterParametersString;
+        }
+        
+        console.log('=== EXPORT WITH FILTER ===');
+        console.log('Export URL:', exportUrl);
+        console.log('Raw parameters received:', JSON.stringify(parameters, null, 2));
+        console.log('FilterParameters string:', filterParametersString);
         console.log('Export body:', JSON.stringify(exportBody, null, 2));
 
         response = await fetch(exportUrl, {
@@ -400,12 +403,15 @@ serve(async (req) => {
           try {
             data = JSON.parse(responseText);
           } catch (parseError) {
-            console.error('Failed to parse API response:', parseError);
-            throw new Error('Invalid API response format - expected JSON');
+            // If not JSON, it might be direct binary content encoded as text
+            console.error('Failed to parse API response as JSON:', parseError);
+            console.log('Response text (first 500 chars):', responseText.substring(0, 500));
+            throw new Error('Invalid API response format - expected JSON with FileContent');
           }
           
           // Check if FileContent exists and is not empty
           if (!data.FileContent) {
+            console.error('API response has no FileContent:', JSON.stringify(data).substring(0, 500));
             throw new Error('API returned empty FileContent');
           }
           
@@ -442,14 +448,11 @@ serve(async (req) => {
           const errorText = await response.text();
           console.error('Export failed:', {
             status: response.status,
+            statusText: response.statusText,
             body: errorText.substring(0, 500)
           });
           throw new Error(`Export failed: ${response.status} - ${errorText.substring(0, 200)}`);
         }
-        return new Response(
-          JSON.stringify({ error: 'Unexpected state after export' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
 
       default:
         return new Response(
