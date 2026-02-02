@@ -22,7 +22,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useReportParameters } from '@/hooks/useReportParameters';
+import { REPORT_MAPPING } from '@/config/reportMapping';
 
 const filterSchema = z.object({
   orgaoUnidade: z.array(z.string()).default([]),
@@ -50,36 +53,13 @@ interface BensNecessidadeFiltersProps {
   loading?: boolean;
 }
 
-// Mock data for selects
-const orgaosUnidadesOptions: MultiSelectOption[] = [
-  { value: '1', label: 'Secretaria de Administração' },
-  { value: '2', label: 'Secretaria de Finanças' },
-  { value: '3', label: 'Secretaria de Educação' },
-];
-
-const gruposOptions: MultiSelectOption[] = [
-  { value: '1', label: 'Mobiliário' },
-  { value: '2', label: 'Equipamentos de Informática' },
-  { value: '3', label: 'Veículos' },
-  { value: '4', label: 'Máquinas e Equipamentos' },
-];
-
-const situacoesOptions: MultiSelectOption[] = [
-  { value: 'Ativo', label: 'Ativo' },
-  { value: 'Inativo', label: 'Inativo' },
-  { value: 'Em Manutenção', label: 'Em Manutenção' },
-  { value: 'Baixado', label: 'Baixado' },
-];
-
-const conservacoesOptions: MultiSelectOption[] = [
-  { value: 'Ótimo', label: 'Ótimo' },
-  { value: 'Bom', label: 'Bom' },
-  { value: 'Regular', label: 'Regular' },
-  { value: 'Ruim', label: 'Ruim' },
-  { value: 'Péssimo', label: 'Péssimo' },
-];
-
 export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFiltersProps) {
+  const reportId = REPORT_MAPPING['bens-necessidade'].reportId;
+  const { 
+    loading: loadingParams, 
+    getOptionsForParameter 
+  } = useReportParameters(reportId);
+
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
@@ -103,6 +83,12 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
     });
   };
 
+  // Opções dinâmicas dos parâmetros do Bold Reports
+  const unidadeOptions = getOptionsForParameter('param_unidade');
+  const grupoOptions = getOptionsForParameter('param_grupo');
+  const situacaoOptions = getOptionsForParameter('param_situacao');
+  const conservacaoOptions = getOptionsForParameter('param_estado');
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -114,12 +100,16 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
             <FormItem>
               <FormLabel>Órgão/Unidade</FormLabel>
               <FormControl>
-                <MultiSelect
-                  options={orgaosUnidadesOptions}
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="Todos"
-                />
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    options={unidadeOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos"
+                  />
+                )}
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -134,12 +124,16 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
             <FormItem>
               <FormLabel>Grupo</FormLabel>
               <FormControl>
-                <MultiSelect
-                  options={gruposOptions}
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="Todos"
-                />
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    options={grupoOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos"
+                  />
+                )}
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -154,12 +148,16 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
             <FormItem>
               <FormLabel>Situação</FormLabel>
               <FormControl>
-                <MultiSelect
-                  options={situacoesOptions}
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="Todos"
-                />
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    options={situacaoOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos"
+                  />
+                )}
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -174,12 +172,16 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
             <FormItem>
               <FormLabel>Estado de Conservação</FormLabel>
               <FormControl>
-                <MultiSelect
-                  options={conservacoesOptions}
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="Todos"
-                />
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    options={conservacaoOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos"
+                  />
+                )}
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -315,7 +317,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
           </Button>
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || loadingParams}
             className="flex-1 gap-2"
           >
             <Search className="h-4 w-4" />
