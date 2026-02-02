@@ -240,18 +240,33 @@ export function ReportsDashboard() {
       <main className="flex-1 container max-w-7xl mx-auto px-4 py-6 overflow-hidden flex flex-col min-h-0">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
-            <TabsList className="grid w-full sm:w-auto grid-cols-3">
-              <TabsTrigger value="bens-necessidade" className="gap-2">
-                <Package className="h-4 w-4 hidden sm:inline" />
-                <span className="text-xs sm:text-sm">Bens por Necessidade</span>
+            <TabsList id="tabs-list-reports" className="flex flex-wrap w-full sm:w-auto gap-1">
+              <TabsTrigger 
+                value="bens-necessidade" 
+                id="tab-bens-necessidade"
+                className="gap-1.5 flex-1 sm:flex-none min-w-0"
+              >
+                <Package className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+                <span className="hidden sm:inline text-sm truncate">Bens por Necessidade</span>
+                <span className="sm:hidden text-xs">Bens</span>
               </TabsTrigger>
-              <TabsTrigger value="inventario" className="gap-2">
-                <ClipboardList className="h-4 w-4 hidden sm:inline" />
-                <span className="text-xs sm:text-sm">Inventário</span>
+              <TabsTrigger 
+                value="inventario" 
+                id="tab-inventario"
+                className="gap-1.5 flex-1 sm:flex-none min-w-0"
+              >
+                <ClipboardList className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+                <span className="hidden sm:inline text-sm truncate">Inventário</span>
+                <span className="sm:hidden text-xs">Inventário</span>
               </TabsTrigger>
-              <TabsTrigger value="auditoria" className="gap-2">
-                <Search className="h-4 w-4 hidden sm:inline" />
-                <span className="text-xs sm:text-sm">Auditoria</span>
+              <TabsTrigger 
+                value="auditoria" 
+                id="tab-auditoria"
+                className="gap-1.5 flex-1 sm:flex-none min-w-0"
+              >
+                <Search className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+                <span className="hidden sm:inline text-sm truncate">Auditoria</span>
+                <span className="sm:hidden text-xs">Auditoria</span>
               </TabsTrigger>
             </TabsList>
 

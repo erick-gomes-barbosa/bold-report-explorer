@@ -20,7 +20,7 @@ export function MobileFiltersDrawer({ reportType, onSubmit, loading }: MobileFil
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" className="lg:hidden gap-2">
+        <Button variant="outline" id="btn-mobile-filters" className="lg:hidden gap-2">
           <Filter className="h-4 w-4" />
           Filtros
         </Button>
