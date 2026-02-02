@@ -8,13 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -29,12 +22,13 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
 
 const filterSchema = z.object({
-  orgaoUnidade: z.string().optional(),
-  grupo: z.string().optional(),
-  situacao: z.string().optional(),
-  conservacao: z.string().optional(),
+  orgaoUnidade: z.array(z.string()).default([]),
+  grupo: z.array(z.string()).default([]),
+  situacao: z.array(z.string()).default([]),
+  conservacao: z.array(z.string()).default([]),
   faixaPrecoMin: z.coerce.number().min(0).optional(),
   faixaPrecoMax: z.coerce.number().min(0).optional(),
   dataAquisicaoInicio: z.date().optional(),
@@ -57,48 +51,57 @@ interface BensNecessidadeFiltersProps {
 }
 
 // Mock data for selects
-const orgaosUnidades = [
-  { id: '1', nome: 'Secretaria de Administração' },
-  { id: '2', nome: 'Secretaria de Finanças' },
-  { id: '3', nome: 'Secretaria de Educação' },
+const orgaosUnidadesOptions: MultiSelectOption[] = [
+  { value: '1', label: 'Secretaria de Administração' },
+  { value: '2', label: 'Secretaria de Finanças' },
+  { value: '3', label: 'Secretaria de Educação' },
 ];
 
-const grupos = [
-  { id: '1', nome: 'Mobiliário' },
-  { id: '2', nome: 'Equipamentos de Informática' },
-  { id: '3', nome: 'Veículos' },
-  { id: '4', nome: 'Máquinas e Equipamentos' },
+const gruposOptions: MultiSelectOption[] = [
+  { value: '1', label: 'Mobiliário' },
+  { value: '2', label: 'Equipamentos de Informática' },
+  { value: '3', label: 'Veículos' },
+  { value: '4', label: 'Máquinas e Equipamentos' },
 ];
 
-const situacoes = ['Ativo', 'Inativo', 'Em Manutenção', 'Baixado'];
-const conservacoes = ['Ótimo', 'Bom', 'Regular', 'Ruim', 'Péssimo'];
+const situacoesOptions: MultiSelectOption[] = [
+  { value: 'Ativo', label: 'Ativo' },
+  { value: 'Inativo', label: 'Inativo' },
+  { value: 'Em Manutenção', label: 'Em Manutenção' },
+  { value: 'Baixado', label: 'Baixado' },
+];
+
+const conservacoesOptions: MultiSelectOption[] = [
+  { value: 'Ótimo', label: 'Ótimo' },
+  { value: 'Bom', label: 'Bom' },
+  { value: 'Regular', label: 'Regular' },
+  { value: 'Ruim', label: 'Ruim' },
+  { value: 'Péssimo', label: 'Péssimo' },
+];
 
 export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFiltersProps) {
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
-      orgaoUnidade: '',
-      grupo: '',
-      situacao: '',
-      conservacao: '',
+      orgaoUnidade: [],
+      grupo: [],
+      situacao: [],
+      conservacao: [],
     },
   });
 
   const handleReset = () => {
     form.reset({
-      orgaoUnidade: '',
-      grupo: '',
-      situacao: '',
-      conservacao: '',
+      orgaoUnidade: [],
+      grupo: [],
+      situacao: [],
+      conservacao: [],
       faixaPrecoMin: undefined,
       faixaPrecoMax: undefined,
       dataAquisicaoInicio: undefined,
       dataAquisicaoFim: undefined,
     });
   };
-
-  const isValid = form.formState.isValid;
-  const isDirty = form.formState.isDirty;
 
   return (
     <Form {...form}>
@@ -110,20 +113,14 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
           render={({ field }) => (
             <FormItem>
               <FormLabel>Órgão/Unidade</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {orgaosUnidades.map((org) => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <MultiSelect
+                  options={orgaosUnidadesOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Todos"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -136,20 +133,14 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
           render={({ field }) => (
             <FormItem>
               <FormLabel>Grupo</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {grupos.map((grupo) => (
-                    <SelectItem key={grupo.id} value={grupo.id}>
-                      {grupo.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <MultiSelect
+                  options={gruposOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Todos"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -162,20 +153,14 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
           render={({ field }) => (
             <FormItem>
               <FormLabel>Situação</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {situacoes.map((sit) => (
-                    <SelectItem key={sit} value={sit}>
-                      {sit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <MultiSelect
+                  options={situacoesOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Todos"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -188,20 +173,14 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
           render={({ field }) => (
             <FormItem>
               <FormLabel>Estado de Conservação</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {conservacoes.map((cons) => (
-                    <SelectItem key={cons} value={cons}>
-                      {cons}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <MultiSelect
+                  options={conservacoesOptions}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Todos"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -272,7 +251,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-0 z-50" align="start">
                       <Calendar
                         mode="single"
                         selected={field.value}
@@ -306,7 +285,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-0 z-50" align="start">
                       <Calendar
                         mode="single"
                         selected={field.value}
@@ -336,7 +315,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
           </Button>
           <Button
             type="submit"
-            disabled={loading || (!isValid && isDirty)}
+            disabled={loading}
             className="flex-1 gap-2"
           >
             <Search className="h-4 w-4" />
