@@ -1,52 +1,28 @@
 import { useState, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { getReportId, mapFiltersToBoldParameters } from '@/config/reportMapping';
+import { 
+  parseBase64CSVToObjects, 
+  base64ToBlob, 
+  downloadBlob,
+  FORMAT_MIME_TYPES,
+  FORMAT_EXTENSIONS,
+  type ParsedCSVResult 
+} from '@/utils/csvParser';
 import type { ReportType, ReportDataItem, PaginationState, ExportFormat } from '@/types/reports';
 
-// Mock data generators for each report type
-function generateBensNecessidadeData(): ReportDataItem[] {
-  return Array.from({ length: 47 }, (_, i) => ({
-    id: `bem-${i + 1}`,
-    patrimonio: `PAT-${String(i + 1).padStart(6, '0')}`,
-    descricao: ['Mesa de escritório', 'Cadeira giratória', 'Computador Dell', 'Impressora HP', 'Armário de aço'][i % 5],
-    grupo: ['Mobiliário', 'Equipamentos de Informática', 'Veículos'][i % 3],
-    situacao: ['Ativo', 'Inativo', 'Em Manutenção'][i % 3],
-    conservacao: ['Ótimo', 'Bom', 'Regular', 'Ruim'][i % 4],
-    valorAquisicao: (Math.random() * 10000 + 500).toFixed(2),
-    dataAquisicao: new Date(2020 + Math.floor(i / 12), i % 12, 1).toLocaleDateString('pt-BR'),
-    unidade: ['Sede', 'Filial Norte', 'Almoxarifado'][i % 3],
-  }));
-}
+const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bold-reports`;
 
-function generateInventarioData(): ReportDataItem[] {
-  return Array.from({ length: 32 }, (_, i) => ({
-    id: `inv-${i + 1}`,
-    codigo: `INV-${String(i + 1).padStart(4, '0')}`,
-    tipo: i % 2 === 0 ? 'Total' : 'Parcial',
-    unidade: ['Sede Principal', 'Almoxarifado Central', 'Depósito Norte', 'Filial Sul'][i % 4],
-    status: ['Pendente', 'Em Andamento', 'Concluído', 'Cancelado'][i % 4],
-    totalItens: Math.floor(Math.random() * 500) + 50,
-    itensVerificados: Math.floor(Math.random() * 400) + 20,
-    divergencias: Math.floor(Math.random() * 10),
-    dataInicio: new Date(2024, i % 12, 1).toLocaleDateString('pt-BR'),
-    responsavel: ['João Silva', 'Maria Santos', 'Pedro Costa'][i % 3],
-  }));
-}
-
-function generateAuditoriaData(): ReportDataItem[] {
-  return Array.from({ length: 25 }, (_, i) => ({
-    id: `aud-${i + 1}`,
-    processo: `AUD-${String(i + 1).padStart(5, '0')}/2024`,
-    orgao: ['Prefeitura Municipal', 'Câmara Municipal'][i % 2],
-    unidade: ['Secretaria de Administração', 'Secretaria de Finanças', 'Gabinete'][i % 3],
-    setor: ['Recursos Humanos', 'Patrimônio', 'Contabilidade'][i % 3],
-    tipoAuditoria: ['Ordinária', 'Especial', 'Seguimento'][i % 3],
-    situacao: ['Em análise', 'Concluída', 'Pendência'][i % 3],
-    periodo: `${String(i % 12 + 1).padStart(2, '0')}/2024`,
-    observacoes: i % 3 === 0 ? 'Com recomendações' : '-',
-  }));
+interface FetchResponse {
+  success: boolean;
+  data?: string; // base64 encoded
+  contentType?: string;
+  error?: string;
 }
 
 export function useReportsData() {
   const [data, setData] = useState<ReportDataItem[]>([]);
+  const [columns, setColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -55,6 +31,9 @@ export function useReportsData() {
     totalCount: 0,
   });
 
+  /**
+   * Busca dados do relatório exportando como CSV e parseando para a tabela.
+   */
   const fetchReportData = useCallback(async (
     reportType: ReportType,
     filters: unknown,
@@ -64,65 +43,134 @@ export function useReportsData() {
     setError(null);
     
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Generate mock data based on report type
-      let allData: ReportDataItem[];
-      switch (reportType) {
-        case 'bens-necessidade':
-          allData = generateBensNecessidadeData();
-          break;
-        case 'inventario':
-          allData = generateInventarioData();
-          break;
-        case 'auditoria':
-          allData = generateAuditoriaData();
-          break;
-        default:
-          allData = [];
+      const reportId = getReportId(reportType);
+      if (!reportId || reportId.startsWith('PLACEHOLDER')) {
+        throw new Error(`ID do relatório não configurado para: ${reportType}`);
       }
+
+      const parameters = mapFiltersToBoldParameters(
+        reportType, 
+        filters as Record<string, unknown>
+      );
+
+      console.group('[ReportsData] Fetching report data');
+      console.log('Report Type:', reportType);
+      console.log('Report ID:', reportId);
+      console.log('Parameters:', parameters);
+      console.groupEnd();
+
+      const response = await supabase.functions.invoke<FetchResponse>('bold-reports', {
+        body: {
+          action: 'export-report',
+          reportId,
+          format: 'CSV',
+          parameters,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Erro ao buscar relatório');
+      }
+
+      if (!response.data?.success || !response.data?.data) {
+        throw new Error(response.data?.error || 'Dados do relatório não disponíveis');
+      }
+
+      // Parse CSV to objects
+      const parsed: ParsedCSVResult = parseBase64CSVToObjects(response.data.data);
       
-      // Paginate
+      console.group('[ReportsData] Parsed CSV');
+      console.log('Headers:', parsed.headers);
+      console.log('Row count:', parsed.data.length);
+      console.groupEnd();
+
+      // Apply client-side pagination
       const pageSize = pagination.pageSize;
       const startIndex = page * pageSize;
-      const paginatedData = allData.slice(startIndex, startIndex + pageSize);
+      const paginatedData = parsed.data.slice(startIndex, startIndex + pageSize);
       
-      setData(paginatedData);
+      setData(paginatedData as ReportDataItem[]);
+      setColumns(parsed.headers);
       setPagination(prev => ({
         ...prev,
         pageIndex: page,
-        totalCount: allData.length,
+        totalCount: parsed.data.length,
       }));
-      
-      console.log('Report data fetched:', { reportType, filters, page, total: allData.length });
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
+      const message = err instanceof Error ? err.message : 'Erro ao carregar dados';
+      console.error('[ReportsData] Error:', message);
+      setError(message);
+      setData([]);
     } finally {
       setLoading(false);
     }
   }, [pagination.pageSize]);
 
+  /**
+   * Exporta o relatório no formato especificado e dispara o download.
+   */
   const exportData = useCallback(async (
     reportType: ReportType,
     format: ExportFormat,
     filters: unknown
-  ) => {
+  ): Promise<boolean> => {
     setLoading(true);
+    
     try {
-      // Simulate export delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const reportId = getReportId(reportType);
+      if (!reportId || reportId.startsWith('PLACEHOLDER')) {
+        throw new Error(`ID do relatório não configurado para: ${reportType}`);
+      }
+
+      const parameters = mapFiltersToBoldParameters(
+        reportType, 
+        filters as Record<string, unknown>
+      );
+
+      // Map local format to Bold Reports format
+      const boldFormat = format.toUpperCase() === 'XLSX' ? 'Excel' : format.toUpperCase();
+
+      console.group('[ReportsData] Exporting report');
+      console.log('Report Type:', reportType);
+      console.log('Format:', boldFormat);
+      console.log('Parameters:', parameters);
+      console.groupEnd();
+
+      const response = await supabase.functions.invoke<FetchResponse>('bold-reports', {
+        body: {
+          action: 'export-report',
+          reportId,
+          format: boldFormat,
+          parameters,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Erro ao exportar relatório');
+      }
+
+      if (!response.data?.success || !response.data?.data) {
+        throw new Error(response.data?.error || 'Dados da exportação não disponíveis');
+      }
+
+      // Convert base64 to blob and download
+      const mimeType = FORMAT_MIME_TYPES[format.toLowerCase()] || 'application/octet-stream';
+      const extension = FORMAT_EXTENSIONS[format.toLowerCase()] || `.${format.toLowerCase()}`;
+      const blob = base64ToBlob(response.data.data, mimeType);
       
-      // In a real app, this would call the backend
-      console.log('Exporting report:', { reportType, format, filters });
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `relatorio_${reportType}_${timestamp}${extension}`;
       
-      // Simulate download
-      const filename = `relatorio_${reportType}_${Date.now()}.${format}`;
-      console.log('Download started:', filename);
+      downloadBlob(blob, filename);
       
+      console.log('[ReportsData] Download started:', filename);
       return true;
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao exportar');
+      const message = err instanceof Error ? err.message : 'Erro ao exportar';
+      console.error('[ReportsData] Export error:', message);
+      setError(message);
       return false;
     } finally {
       setLoading(false);
@@ -135,12 +183,14 @@ export function useReportsData() {
 
   const clearData = useCallback(() => {
     setData([]);
+    setColumns([]);
     setError(null);
     setPagination(prev => ({ ...prev, pageIndex: 0, totalCount: 0 }));
   }, []);
 
   return {
     data,
+    columns,
     loading,
     error,
     pagination,

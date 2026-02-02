@@ -1,7 +1,7 @@
 
 # Integração Bold Reports com Dashboard de Relatórios
 
-## Objetivo
+**Status: ✅ Implementado**
 Conectar cada aba da dashboard (Bens por Necessidade, Inventário, Auditoria) a um relatório específico do Bold Reports usando IDs configuráveis, implementando dois fluxos de exportação distintos:
 
 1. **Botão "Gerar"**: Exporta CSV para popular a DataTable com dados reais
