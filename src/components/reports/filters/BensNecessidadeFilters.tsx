@@ -91,7 +91,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form id="form-bens-necessidade" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         {/* Órgão/Unidade */}
         <FormField
           control={form.control}
@@ -104,6 +104,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
+                    id="filter-orgao-unidade"
                     options={unidadeOptions}
                     value={field.value}
                     onChange={field.onChange}
@@ -128,6 +129,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
+                    id="filter-grupo"
                     options={grupoOptions}
                     value={field.value}
                     onChange={field.onChange}
@@ -152,6 +154,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
+                    id="filter-situacao"
                     options={situacaoOptions}
                     value={field.value}
                     onChange={field.onChange}
@@ -176,6 +179,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
+                    id="filter-conservacao"
                     options={conservacaoOptions}
                     value={field.value}
                     onChange={field.onChange}
@@ -199,6 +203,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                 <FormItem>
                   <FormControl>
                     <Input
+                      id="filter-preco-min"
                       type="number"
                       placeholder="Mínimo"
                       {...field}
@@ -216,6 +221,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                 <FormItem>
                   <FormControl>
                     <Input
+                      id="filter-preco-max"
                       type="number"
                       placeholder="Máximo"
                       {...field}
@@ -242,6 +248,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
+                          id="filter-data-inicio"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
@@ -276,6 +283,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
+                          id="filter-data-fim"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
@@ -307,6 +315,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           <Button
+            id="btn-filter-reset"
             type="button"
             variant="outline"
             onClick={handleReset}
@@ -316,6 +325,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
             Limpar
           </Button>
           <Button
+            id="btn-filter-submit"
             type="submit"
             disabled={loading || loadingParams}
             className="flex-1 gap-2"

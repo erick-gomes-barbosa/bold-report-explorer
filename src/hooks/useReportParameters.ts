@@ -73,14 +73,27 @@ export function useReportParameters(reportId: string): UseReportParametersResult
     const param = parameters.find(p => p.Name === paramName);
     if (!param) return [];
 
-    const availableValues = param.AvailableValues || [];
-    
-    return availableValues
-      .filter((av: AvailableValue) => av.DisplayField && av.ValueField)
-      .map((av: AvailableValue) => ({
-        label: av.DisplayField,
-        value: av.ValueField,
-      }));
+    // Suporta ambos os formatos: AvailableValues (Bold Reports) e ValidValues (legado)
+    if (param.AvailableValues && param.AvailableValues.length > 0) {
+      return param.AvailableValues
+        .filter((av: AvailableValue) => av.DisplayField && av.ValueField)
+        .map((av: AvailableValue) => ({
+          label: av.DisplayField,
+          value: av.ValueField,
+        }));
+    }
+
+    // Fallback para formato ValidValues { Label, Value }
+    if (param.ValidValues && param.ValidValues.length > 0) {
+      return param.ValidValues
+        .filter((vv) => vv.Label && vv.Value)
+        .map((vv) => ({
+          label: vv.Label,
+          value: vv.Value,
+        }));
+    }
+
+    return [];
   }, [parameters]);
 
   return {

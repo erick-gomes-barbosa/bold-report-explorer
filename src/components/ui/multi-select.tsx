@@ -24,6 +24,7 @@ interface MultiSelectProps {
   emptyMessage?: string;
   className?: string;
   disabled?: boolean;
+  id?: string;
 }
 
 export function MultiSelect({
@@ -34,6 +35,7 @@ export function MultiSelect({
   emptyMessage = 'Nenhum item encontrado.',
   className,
   disabled = false,
+  id,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   
@@ -65,6 +67,7 @@ export function MultiSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           variant="outline"
           role="combobox"
           aria-expanded={open}
