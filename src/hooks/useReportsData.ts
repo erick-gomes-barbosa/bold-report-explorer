@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getReportId, mapFiltersToBoldParameters } from '@/config/reportMapping';
+import { getColumnMapping } from '@/config/columnMapping';
 import { 
   parseBase64CSVToObjects, 
   base64ToBlob, 
@@ -76,11 +77,17 @@ export function useReportsData() {
         throw new Error(response.data?.error || 'Dados do relatório não disponíveis');
       }
 
-      // Parse CSV to objects
-      const parsed: ParsedCSVResult = parseBase64CSVToObjects(response.data.data);
+      // Get column mapping for this report type
+      const columnMapping = getColumnMapping(reportType);
+
+      // Parse CSV to objects with column mapping
+      const parsed: ParsedCSVResult = parseBase64CSVToObjects(response.data.data, {
+        headerMapping: columnMapping
+      });
       
       console.group('[ReportsData] Parsed CSV');
-      console.log('Headers:', parsed.headers);
+      console.log('Raw Headers:', parsed.rawHeaders);
+      console.log('Mapped Headers:', parsed.headers);
       console.log('Row count:', parsed.data.length);
       console.groupEnd();
 

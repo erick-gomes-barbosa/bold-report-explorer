@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Package, ClipboardList, Search } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportsHeader } from '@/components/reports/ReportsHeader';
@@ -10,6 +10,47 @@ import { Badge } from '@/components/ui/badge';
 import { useReportsData } from '@/hooks/useReportsData';
 import { toast } from 'sonner';
 import type { ReportType, ReportDataItem, ExportFormat } from '@/types/reports';
+
+// Formatadores de células para campos específicos
+const cellFormatters: Record<string, (value: unknown) => React.ReactNode> = {
+  'Situação': (value) => {
+    const situacao = String(value);
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+      'em_uso': 'default',
+      'em_estoque': 'secondary',
+      'em_manutencao': 'outline',
+      'desativado': 'destructive',
+    };
+    const labels: Record<string, string> = {
+      'em_uso': 'Em Uso',
+      'em_estoque': 'Em Estoque',
+      'em_manutencao': 'Em Manutenção',
+      'desativado': 'Desativado',
+    };
+    return <Badge variant={variants[situacao] || 'default'}>{labels[situacao] || situacao}</Badge>;
+  },
+  'Conservação': (value) => {
+    const conservacao = String(value);
+    const colors: Record<string, string> = {
+      'novo': 'text-green-600',
+      'bom': 'text-blue-600',
+      'regular': 'text-yellow-600',
+      'ruim': 'text-destructive',
+    };
+    const labels: Record<string, string> = {
+      'novo': 'Novo',
+      'bom': 'Bom',
+      'regular': 'Regular',
+      'ruim': 'Ruim',
+    };
+    return <span className={colors[conservacao] || ''}>{labels[conservacao] || conservacao}</span>;
+  },
+  'Valor': (value) => {
+    const num = typeof value === 'number' ? value : parseFloat(String(value));
+    if (isNaN(num)) return String(value);
+    return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  },
+};
 
 // Column definitions for each report type
 const bensNecessidadeColumns: Column<ReportDataItem>[] = [
@@ -127,6 +168,7 @@ export function ReportsDashboard() {
   
   const { 
     data, 
+    columns: csvColumns,
     loading, 
     error, 
     pagination,
@@ -135,6 +177,20 @@ export function ReportsDashboard() {
     changePage,
     clearData,
   } = useReportsData();
+
+  // Gera colunas dinâmicas baseadas nos headers do CSV
+  const dynamicColumns = useMemo((): Column<ReportDataItem>[] => {
+    if (csvColumns.length === 0) {
+      return [];
+    }
+    
+    return csvColumns.map(header => ({
+      id: header,
+      header: header,
+      accessorKey: header,
+      cell: cellFormatters[header] || undefined,
+    }));
+  }, [csvColumns]);
 
   const handleTabChange = (value: string) => {
     const newTab = value as ReportType;
@@ -174,7 +230,8 @@ export function ReportsDashboard() {
     }
   }, [activeTab, currentFilters, exportData]);
 
-  const columns = getColumns(activeTab);
+  // Use colunas dinâmicas do CSV ou fallback para colunas estáticas
+  const columns = dynamicColumns.length > 0 ? dynamicColumns : getColumns(activeTab);
 
   return (
     <div className="min-h-screen bg-background">
