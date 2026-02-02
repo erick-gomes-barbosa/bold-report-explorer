@@ -1,121 +1,191 @@
 
-# Plano: Mapeamento dos Filtros para Parâmetros Bold Reports
+# Plano: Carregar Valores Disponíveis dos Filtros Dinamicamente
 
 ## Objetivo
-Corrigir o mapeamento dos filtros da aba **Bens por Necessidade** para usar os nomes de parâmetros corretos do Bold Reports, com suporte a multi-seleção.
+Buscar os valores disponíveis (`AvailableValues`) dos parâmetros do Bold Reports e populá-los nos campos de multi-seleção da aba **Bens por Necessidade**.
 
-## Parâmetros a Mapear
+## Dados Descobertos (API Bold Reports)
 
-| Campo do Filtro | Nome no Form | Parâmetro Bold Reports | Tipo |
-|-----------------|--------------|------------------------|------|
-| Unidade | `orgaoUnidade` | `param_unidade` | Multi-seleção |
-| Grupo | `grupo` | `param_grupo` | Multi-seleção |
-| Situação | `situacao` | `param_situacao` | Multi-seleção |
-| Estado de Conservação | `conservacao` | `param_estado` | Multi-seleção |
-| Preço Mínimo | `faixaPrecoMin` | `param_preco_inicial` | Número |
-| Preço Máximo | `faixaPrecoMax` | `param_preco_final` | Número |
-| Data Início | `dataAquisicaoInicio` | `param_dataAquisicao_inicio` | Data |
-| Data Fim | `dataAquisicaoFim` | `param_dataAquisicao_final` | Data |
+| Parâmetro | Prompt | Valores Disponíveis |
+|-----------|--------|---------------------|
+| `param_unidade` | Órgão/Unidade | Ministério da Tecnologia, Departamento de TI, Setor de Infraestrutura |
+| `param_grupo` | Grupo de Bens | Mobiliário, Equipamentos de Informática, Veículos, Periféricos |
+| `param_situacao` | Situação de Uso | em_estoque, em_manutencao, desativado, em_uso |
+| `param_estado` | Estado de Conservação | bom, regular, ruim, novo |
+| `param_preco_inicial` | Preço Mínimo | Float (default: 0) |
+| `param_preco_final` | Preço Máximo | Float (default: 99999) |
+
+## Arquitetura Proposta
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    BensNecessidadeFilters                   │
+│                                                             │
+│  useEffect (on mount)                                       │
+│      │                                                      │
+│      ▼                                                      │
+│  fetchParameters('8fae90ee-011b-40d4-a53a-65b74f97b3cb')   │
+│      │                                                      │
+│      ▼                                                      │
+│  Edge Function → Bold Reports API                           │
+│      │                                                      │
+│      ▼                                                      │
+│  Mapear AvailableValues para MultiSelectOption[]            │
+│      │                                                      │
+│      ▼                                                      │
+│  ┌─────────────────────────────────────────┐               │
+│  │ Unidade: [Ministério da Tecnologia ▾]   │               │
+│  │ Grupo:   [Mobiliário, Veículos    ▾]    │               │
+│  │ Situação:[em_uso, em_estoque      ▾]    │               │
+│  │ Estado:  [bom, regular            ▾]    │               │
+│  └─────────────────────────────────────────┘               │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Alterações Necessárias
 
-### 1. Atualizar Arquivo de Mapeamento
-**Arquivo:** `src/config/reportMapping.ts`
+### 1. Criar Hook para Buscar Parâmetros do Relatório
+**Arquivo:** `src/hooks/useReportParameters.ts` (novo)
 
-Corrigir o `parameterMapping` do relatório `bens-necessidade`:
+Responsabilidades:
+- Chamar a Edge Function com `action: 'get-report-parameters'`
+- Receber a lista de `ReportParameter[]` com `AvailableValues`
+- Expor função para transformar `AvailableValues` em `MultiSelectOption[]`
+- Cache dos parâmetros por `reportId` para evitar chamadas duplicadas
 
-```text
-Antes                      →  Depois
-─────────────────────────────────────────────────
-orgaoUnidade: 'OrgaoUnidade'  →  orgaoUnidade: 'param_unidade'
-grupo: 'Grupo'                →  grupo: 'param_grupo'
-situacao: 'Situacao'          →  situacao: 'param_situacao'
-conservacao: 'Conservacao'    →  conservacao: 'param_estado'
-faixaPrecoMin: 'PrecoMinimo'  →  faixaPrecoMin: 'param_preco_inicial'
-faixaPrecoMax: 'PrecoMaximo'  →  faixaPrecoMax: 'param_preco_final'
-dataAquisicaoInicio: 'DataInicio'  →  dataAquisicaoInicio: 'param_dataAquisicao_inicio'
-dataAquisicaoFim: 'DataFim'        →  dataAquisicaoFim: 'param_dataAquisicao_final'
-```
-
-### 2. Converter Filtros para Multi-Seleção
+### 2. Atualizar Componente de Filtros
 **Arquivo:** `src/components/reports/filters/BensNecessidadeFilters.tsx`
 
-Alterar os campos Unidade, Grupo, Situação e Conservação de `Select` simples para componentes que suportam múltipla seleção (usando Checkbox dentro de um Popover ou componente similar).
+Mudanças:
+- Importar o novo hook `useReportParameters`
+- Chamar `fetchParameters` no `useEffect` com o ID do relatório
+- Substituir opções hardcoded por opções dinâmicas da API
+- Exibir estado de loading enquanto carrega os parâmetros
+- Tratar erros de carregamento com fallback para opções vazias
 
-Mudanças no schema Zod:
-
+### 3. Mapeamento de AvailableValues para MultiSelectOption
+Transformar formato da API:
 ```text
-Antes                         →  Depois
-──────────────────────────────────────────────
-orgaoUnidade: z.string()      →  orgaoUnidade: z.array(z.string())
-grupo: z.string()             →  grupo: z.array(z.string())
-situacao: z.string()          →  situacao: z.array(z.string())
-conservacao: z.string()       →  conservacao: z.array(z.string())
+API Bold Reports               →  MultiSelectOption
+─────────────────────────────────────────────────────
+{                                 {
+  DisplayField: "Mobiliário"  →    label: "Mobiliário"
+  ValueField: "7ea4d582-..."  →    value: "7ea4d582-..."
+}                                 }
 ```
 
-### 3. Tratamento de Arrays Vazios
-A função `mapFiltersToBoldParameters` já ignora valores vazios e já suporta arrays. Apenas garantir que arrays vazios não sejam enviados:
+## Fluxo de Dados
 
 ```text
-Se array vazio [] → não incluir o parâmetro
-Se array com valores ["Ativo", "Inativo"] → enviar como param_situacao: ["Ativo", "Inativo"]
+┌──────────────────┐
+│ Componente Monta │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ useReportParameters(reportId)        │
+│                                      │
+│ - loading = true                     │
+│ - fetchParameters()                  │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ Edge Function: get-report-parameters │
+│                                      │
+│ POST /bold-reports                   │
+│ { action: 'get-report-parameters',   │
+│   reportId: '8fae90ee-...' }         │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ Bold Reports API Response            │
+│                                      │
+│ [                                    │
+│   { Name: 'param_unidade',           │
+│     AvailableValues: [...] },        │
+│   { Name: 'param_grupo', ... },      │
+│   ...                                │
+│ ]                                    │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ Processar e Mapear                   │
+│                                      │
+│ parameterOptions = {                 │
+│   param_unidade: [                   │
+│     { value: 'uuid', label: 'Nome' } │
+│   ],                                 │
+│   param_grupo: [...],                │
+│   ...                                │
+│ }                                    │
+└────────┬─────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────┐
+│ Renderizar MultiSelect com opções    │
+│                                      │
+│ <MultiSelect                         │
+│   options={parameterOptions[         │
+│     'param_unidade'                  │
+│   ] ?? []}                           │
+│   ...                                │
+│ />                                   │
+└──────────────────────────────────────┘
 ```
 
-## Componente de Multi-Seleção
+## Arquivos a Criar/Modificar
 
-Criar um componente reutilizável `MultiSelect` baseado em Popover + Checkbox que:
-- Mostra badges com os itens selecionados
-- Permite selecionar/desmarcar múltiplos itens
-- Exibe "Todos" quando nenhum está selecionado (comportamento padrão do Bold Reports)
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `src/hooks/useReportParameters.ts` | Criar | Hook para buscar e cachear parâmetros |
+| `src/components/reports/filters/BensNecessidadeFilters.tsx` | Modificar | Usar opções dinâmicas da API |
 
-## Fluxo de Dados Atualizado
+## Detalhes Técnicos
+
+### Hook useReportParameters
 
 ```text
-┌────────────────────────────────────────┐
-│  Formulário de Filtros                 │
-│                                        │
-│  Unidade: [✓ Sec. Adm] [✓ Sec. Fin]   │
-│  Grupo: [✓ Mobiliário]                 │
-│  Situação: [] (vazio = todos)          │
-│  Estado: [✓ Bom] [✓ Regular]           │
-│  Preço: 100 até 5000                   │
-│  Data: 01/01/2024 até 31/12/2024       │
-└────────────────────────────────────────┘
-                    │
-                    ▼
-┌────────────────────────────────────────┐
-│  mapFiltersToBoldParameters()          │
-│                                        │
-│  {                                     │
-│    param_unidade: ["1", "2"],          │
-│    param_grupo: ["1"],                 │
-│    param_estado: ["Bom", "Regular"],   │
-│    param_preco_inicial: ["100"],       │
-│    param_preco_final: ["5000"],        │
-│    param_dataAquisicao_inicio: [...],  │
-│    param_dataAquisicao_final: [...]    │
-│  }                                     │
-│  // param_situacao omitido (vazio)     │
-└────────────────────────────────────────┘
-                    │
-                    ▼
-┌────────────────────────────────────────┐
-│  Edge Function → Bold Reports API      │
-└────────────────────────────────────────┘
+useReportParameters(reportId: string)
+├── Estados:
+│   ├── parameters: ReportParameter[]
+│   ├── loading: boolean
+│   └── error: string | null
+│
+├── Funções:
+│   ├── fetchParameters(): Promise<void>
+│   └── getOptionsForParameter(name: string): MultiSelectOption[]
+│
+└── Retorno:
+    ├── parameters
+    ├── loading
+    ├── error
+    └── getOptionsForParameter
 ```
 
-## Arquivos a Modificar
+### Mapeamento de Parâmetros no Componente
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/config/reportMapping.ts` | Corrigir nomes dos parâmetros |
-| `src/components/reports/filters/BensNecessidadeFilters.tsx` | Converter para multi-seleção |
-| `src/components/ui/multi-select.tsx` | Criar componente de multi-seleção (novo) |
+```text
+Parâmetro API        →  Campo do Formulário
+────────────────────────────────────────────
+param_unidade        →  orgaoUnidade
+param_grupo          →  grupo
+param_situacao       →  situacao
+param_estado         →  conservacao
+```
+
+## Tratamento de Edge Cases
+
+1. **API não retorna parâmetros**: Mostrar opções vazias com mensagem
+2. **AvailableValues vazio**: Permitir entrada de texto livre ou mostrar placeholder
+3. **Erro de rede**: Mostrar toast de erro e permitir retry
+4. **Loading lento**: Exibir skeleton nos campos de seleção
 
 ## Resultado Esperado
 
-Após a implementação:
-1. Os filtros de Unidade, Grupo, Situação e Conservação permitirão múltipla seleção
-2. Campos vazios (sem seleção) retornarão todos os registros
-3. Os parâmetros serão enviados com os nomes corretos (`param_*`)
-4. O Bold Reports receberá os filtros corretamente e aplicará no relatório
+1. Ao abrir a aba "Bens por Necessidade", os filtros carregam automaticamente
+2. Os campos de multi-seleção mostram os valores reais do Bold Reports
+3. Os valores selecionados são enviados com os UUIDs/valores corretos
+4. O Bold Reports aplica os filtros corretamente na geração do relatório
