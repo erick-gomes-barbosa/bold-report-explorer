@@ -13,7 +13,7 @@ export interface ReportConfig {
  */
 export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
   'bens-necessidade': {
-    reportId: 'PLACEHOLDER_BENS_NECESSIDADE_ID',
+    reportId: '8fae90ee-011b-40d4-a53a-65b74f97b3cb',
     parameterMapping: {
       orgaoUnidade: 'OrgaoUnidade',
       grupo: 'Grupo',
@@ -26,7 +26,7 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
     }
   },
   'inventario': {
-    reportId: 'PLACEHOLDER_INVENTARIO_ID',
+    reportId: '0d93ea95-4d38-4b5e-b8c2-35c784564ff0',
     parameterMapping: {
       tipo: 'Tipo',
       status: 'Status',
@@ -36,7 +36,7 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
     }
   },
   'auditoria': {
-    reportId: 'PLACEHOLDER_AUDITORIA_ID',
+    reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207',
     parameterMapping: {
       orgao: 'Orgao',
       unidade: 'Unidade',
