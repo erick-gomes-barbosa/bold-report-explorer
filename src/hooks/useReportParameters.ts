@@ -48,7 +48,8 @@ export function useReportParameters(reportId: string): UseReportParametersResult
         throw new Error(fnError.message);
       }
 
-      const params = data?.parameters || [];
+      // A API retorna os parâmetros em data.data (array) ou data (se já for array)
+      const params = Array.isArray(data) ? data : (data?.data || data?.parameters || []);
       
       // Armazenar no cache
       parametersCache.set(reportId, params);
