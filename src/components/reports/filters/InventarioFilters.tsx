@@ -7,13 +7,6 @@ import { CalendarIcon, Search, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -34,7 +27,7 @@ import { useReportParameters } from '@/hooks/useReportParameters';
 import { REPORT_MAPPING } from '@/config/reportMapping';
 
 const filterSchema = z.object({
-  tipo: z.enum(['total', 'parcial']),
+  tipo: z.array(z.string()).default([]),
   status: z.array(z.string()).default([]),
   periodoInicio: z.date().optional(),
   periodoFim: z.date().optional(),
@@ -61,6 +54,11 @@ interface InventarioFiltersProps {
 }
 
 // Opções estáticas de fallback (usadas quando a API não retorna parâmetros)
+const staticTipoOptions = [
+  { value: 'total', label: 'Total' },
+  { value: 'parcial', label: 'Parcial' },
+];
+
 const staticStatusOptions = [
   { value: 'pendente', label: 'Pendente' },
   { value: 'em_andamento', label: 'Em Andamento' },
@@ -86,7 +84,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
-      tipo: 'total',
+      tipo: [],
       status: [],
       unidadeAlvo: [],
     },
@@ -95,6 +93,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
   // Wrapper para incluir label mappings no submit
   const handleFormSubmit = (data: FilterFormData) => {
     const labelMappings: Record<string, Record<string, string>> = {
+      tipo: getLabelMappingForParameter('param_tipo'),
       status: getLabelMappingForParameter('param_status'),
       unidadeAlvo: getLabelMappingForParameter('param_unidade'),
     };
@@ -107,7 +106,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
 
   const handleReset = () => {
     form.reset({
-      tipo: 'total',
+      tipo: [],
       status: [],
       periodoInicio: undefined,
       periodoFim: undefined,
@@ -116,33 +115,37 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
   };
 
   // Opções dinâmicas dos parâmetros do Bold Reports (com fallback estático)
+  const dynamicTipoOptions = getOptionsForParameter('param_tipo');
   const dynamicStatusOptions = getOptionsForParameter('param_status');
   const dynamicUnidadeOptions = getOptionsForParameter('param_unidade');
   
+  const tipoOptions = dynamicTipoOptions.length > 0 ? dynamicTipoOptions : staticTipoOptions;
   const statusOptions = dynamicStatusOptions.length > 0 ? dynamicStatusOptions : staticStatusOptions;
   const unidadeOptions = dynamicUnidadeOptions.length > 0 ? dynamicUnidadeOptions : staticUnidadeOptions;
 
   return (
     <Form {...form}>
       <form id="form-inventario" onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
-        {/* Tipo */}
+        {/* Tipo com MultiSelect */}
         <FormField
           control={form.control}
           name="tipo"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Tipo de Inventário *</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger id="filter-tipo">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="total">Total</SelectItem>
-                  <SelectItem value="parcial">Parcial</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormLabel>Tipo de Inventário</FormLabel>
+              <FormControl>
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    id="filter-tipo"
+                    options={tipoOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos os tipos"
+                  />
+                )}
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
