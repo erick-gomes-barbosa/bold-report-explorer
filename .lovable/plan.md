@@ -1,162 +1,193 @@
 
 
-# Plano: Corrigir Estouro de DIV em Mobile e Adicionar IDs de Navegacao
+# Plano: Adaptar Relatorio de Inventario com Logicas de Bens por Necessidade
 
-## Problemas Identificados
+## Analise Atual
 
-### 1. Estouro de DIV na Navegacao Mobile
-O texto "Bens por Necessidade" e extende alem do limite do TabsTrigger porque:
-- O componente TabsTrigger possui `whitespace-nowrap` por padrao
-- O TabsList usa `grid-cols-3` que divide igualmente o espaco
-- Nao ha truncamento ou abreviacao do texto em telas pequenas
+### O que foi implementado em Bens por Necessidade
+1. **Filtros Dinamicos**: Carrega opcoes de filtro diretamente da API Bold Reports via `useReportParameters`
+2. **Multi-select**: Campos de filtro permitem selecao multipla
+3. **Label Mappings**: Captura e envia labels junto com values para a API
+4. **Mapeamento de Colunas**: Converte headers genericos (TextBox9) para nomes legiveis (Patrimonio)
+5. **IDs para Testes**: Todos os elementos possuem IDs unicos
+6. **Integracao com Bold Reports**: Usa `mapFiltersToBoldParameters` para converter filtros
 
-### 2. Ausencia de IDs para Testes Automatizados
-Os elementos de navegacao (TabsTrigger) nao possuem IDs, dificultando a automacao de testes.
+### Situacao Atual do Inventario
+- O relatorio de Inventario (**ID: 0d93ea95-4d38-4b5e-b8c2-35c784564ff0**) existe e exporta dados corretamente
+- A API retorna **0 parametros dinamicos** - filtros sao estaticos
+- O CSV exportado possui a estrutura:
+  - TextBox9 = Nome/Descricao
+  - TextBox10 = Tipo (total/parcial)
+  - TextBox11 = Status (em_andamento/aberto)
+  - TextBox12 = Data Inicio
+  - TextBox13 = Data Fim
+  - TextBox14 = Unidade
+  - TextBox15 = Total Itens
 
-## Solucao Proposta
+## Alteracoes Necessarias
 
-### 1. Ajustar Layout do TabsList para Mobile
+### 1. Atualizar Mapeamento de Colunas (`src/config/columnMapping.ts`)
 
-Modificar o TabsList para permitir que os triggers se ajustem ao conteudo em vez de forcarem divisao igual:
+Preencher o mapeamento para o relatorio de Inventario:
+
+```text
+Adicionar ao INVENTARIO_COLUMNS:
+  'TextBox9': 'Descricao',
+  'TextBox10': 'Tipo',
+  'TextBox11': 'Status',
+  'TextBox12': 'Data Inicio',
+  'TextBox13': 'Data Fim',
+  'TextBox14': 'Unidade',
+  'TextBox15': 'Total Itens'
+```
+
+### 2. Atualizar Mapeamento de Parametros (`src/config/reportMapping.ts`)
+
+Ajustar o mapeamento de filtros para usar o prefixo `param_`:
 
 ```text
 Antes:
-<TabsList className="grid w-full sm:w-auto grid-cols-3">
+parameterMapping: {
+  tipo: 'Tipo',
+  status: 'Status',
+  periodoInicio: 'DataInicio',
+  periodoFim: 'DataFim',
+  unidadeAlvo: 'UnidadeAlvo',
+}
 
 Depois:
-<TabsList className="flex flex-wrap w-full sm:w-auto gap-1">
+parameterMapping: {
+  tipo: 'param_tipo',
+  status: 'param_status',
+  periodoInicio: 'param_periodo_inicio',
+  periodoFim: 'param_periodo_fim',
+  unidadeAlvo: 'param_unidade',
+}
 ```
 
-### 2. Remover whitespace-nowrap dos Triggers em Mobile
+### 3. Refatorar Filtros de Inventario (`src/components/reports/filters/InventarioFilters.tsx`)
 
-Permitir que o texto quebre em mobile, mas mantenha em uma linha em telas maiores:
+Aplicar as mesmas logicas de BensNecessidadeFilters:
 
-```text
-Antes:
-<TabsTrigger value="bens-necessidade" className="gap-2">
+**3.1. Filtros Dinamicos via API (se disponiveis):**
+Como a API nao retorna parametros para este relatorio, os filtros permanecerao estaticos, mas:
+- Adicionar `useReportParameters` para tentar carregar opcoes
+- Manter fallback para opcoes estaticas
+- Preparar estrutura para quando parametros forem configurados no Bold Reports
 
-Depois:
-<TabsTrigger 
-  value="bens-necessidade" 
-  id="tab-bens-necessidade"
-  className="gap-2 flex-1 sm:flex-none whitespace-normal sm:whitespace-nowrap text-center"
->
-```
+**3.2. Converter para Multi-select (onde aplicavel):**
+- **Tipo**: Manter select unico (Total/Parcial sao mutuamente exclusivos)
+- **Status**: Converter para MultiSelect (permite filtrar multiplos status)
+- **Unidade**: Converter para MultiSelect (permite filtrar multiplas unidades)
 
-### 3. Usar Texto Abreviado em Mobile
+**3.3. Adicionar Label Mappings:**
+Incluir `_labelMappings` no submit para enviar labels corretos
 
-Usar textos mais curtos em telas pequenas:
-
-```text
-Antes:
-<span className="text-xs sm:text-sm">Bens por Necessidade</span>
-
-Depois:
-<span className="hidden sm:inline text-sm">Bens por Necessidade</span>
-<span className="sm:hidden text-xs">Bens</span>
-```
-
-### 4. Adicionar IDs aos Elementos de Navegacao
-
-Adicionar IDs unicos para facilitar testes automatizados:
-
+**3.4. Adicionar IDs para Testes:**
 | Elemento | ID |
 |----------|-----|
-| Tab Bens por Necessidade | `tab-bens-necessidade` |
-| Tab Inventario | `tab-inventario` |
-| Tab Auditoria | `tab-auditoria` |
-| TabsList | `tabs-list-reports` |
-| Botao Filtros Mobile | `btn-mobile-filters` |
+| Formulario | `form-inventario` |
+| Campo Tipo | `filter-tipo` |
+| Campo Status | `filter-status` |
+| Campo Periodo Inicio | `filter-periodo-inicio` |
+| Campo Periodo Fim | `filter-periodo-fim` |
+| Campo Unidade | `filter-unidade` |
+| Botao Limpar | `btn-filter-reset-inventario` |
+| Botao Gerar | `btn-filter-submit-inventario` |
 
-## Alteracoes Detalhadas
+**3.5. Estrutura do Novo Componente:**
 
-### Arquivo: ReportsDashboard.tsx
+```text
+InventarioFilters
+├── useReportParameters (hook para carregar opcoes dinamicas)
+├── useForm (react-hook-form + zod validation)
+├── handleFormSubmit (inclui _labelMappings)
+├── handleReset
+├── Campos:
+│   ├── Tipo (Select unico - obrigatorio)
+│   ├── Status (MultiSelect - dinamico/estatico)
+│   ├── Periodo (DatePicker inicio/fim)
+│   └── Unidade (MultiSelect - dinamico/estatico)
+└── Actions (Limpar + Gerar)
+```
 
-**Linhas 243-256 - Modificar TabsList e TabsTriggers:**
+### 4. Atualizar Schema Zod
+
+Ajustar o schema para suportar arrays nos campos multi-select:
 
 ```text
 Antes:
-<TabsList className="grid w-full sm:w-auto grid-cols-3">
-  <TabsTrigger value="bens-necessidade" className="gap-2">
-    <Package className="h-4 w-4 hidden sm:inline" />
-    <span className="text-xs sm:text-sm">Bens por Necessidade</span>
-  </TabsTrigger>
-  <TabsTrigger value="inventario" className="gap-2">
-    <ClipboardList className="h-4 w-4 hidden sm:inline" />
-    <span className="text-xs sm:text-sm">Inventário</span>
-  </TabsTrigger>
-  <TabsTrigger value="auditoria" className="gap-2">
-    <Search className="h-4 w-4 hidden sm:inline" />
-    <span className="text-xs sm:text-sm">Auditoria</span>
-  </TabsTrigger>
-</TabsList>
+status: z.string().optional(),
+unidadeAlvo: z.string().optional(),
 
 Depois:
-<TabsList id="tabs-list-reports" className="flex flex-wrap w-full sm:w-auto gap-1">
-  <TabsTrigger 
-    value="bens-necessidade" 
-    id="tab-bens-necessidade"
-    className="gap-1.5 flex-1 sm:flex-none min-w-0"
-  >
-    <Package className="h-4 w-4 hidden sm:inline flex-shrink-0" />
-    <span className="hidden sm:inline text-sm truncate">Bens por Necessidade</span>
-    <span className="sm:hidden text-xs">Bens</span>
-  </TabsTrigger>
-  <TabsTrigger 
-    value="inventario" 
-    id="tab-inventario"
-    className="gap-1.5 flex-1 sm:flex-none min-w-0"
-  >
-    <ClipboardList className="h-4 w-4 hidden sm:inline flex-shrink-0" />
-    <span className="hidden sm:inline text-sm truncate">Inventário</span>
-    <span className="sm:hidden text-xs">Inventário</span>
-  </TabsTrigger>
-  <TabsTrigger 
-    value="auditoria" 
-    id="tab-auditoria"
-    className="gap-1.5 flex-1 sm:flex-none min-w-0"
-  >
-    <Search className="h-4 w-4 hidden sm:inline flex-shrink-0" />
-    <span className="hidden sm:inline text-sm truncate">Auditoria</span>
-    <span className="sm:hidden text-xs">Auditoria</span>
-  </TabsTrigger>
-</TabsList>
+status: z.array(z.string()).default([]),
+unidadeAlvo: z.array(z.string()).default([]),
 ```
 
-### Arquivo: MobileFiltersDrawer.tsx
+## Detalhamento das Alteracoes
 
-**Linha 23 - Adicionar ID ao botao de filtros mobile:**
+### Arquivo: `src/config/columnMapping.ts`
+
+**Linhas 19-21 - Preencher INVENTARIO_COLUMNS:**
 
 ```text
-Antes:
-<Button variant="outline" className="lg:hidden gap-2">
-
-Depois:
-<Button variant="outline" id="btn-mobile-filters" className="lg:hidden gap-2">
+export const INVENTARIO_COLUMNS: Record<string, string> = {
+  'TextBox9': 'Descricao',
+  'TextBox10': 'Tipo',
+  'TextBox11': 'Status',
+  'TextBox12': 'Data Inicio',
+  'TextBox13': 'Data Fim',
+  'TextBox14': 'Unidade',
+  'TextBox15': 'Total Itens',
+};
 ```
 
-## Resumo dos IDs Adicionados
+### Arquivo: `src/config/reportMapping.ts`
 
-| Componente | ID | Finalidade |
-|------------|-----|------------|
-| TabsList | `tabs-list-reports` | Container da navegacao |
-| Tab Bens | `tab-bens-necessidade` | Navegar para aba de bens |
-| Tab Inventario | `tab-inventario` | Navegar para aba de inventario |
-| Tab Auditoria | `tab-auditoria` | Navegar para aba de auditoria |
-| Botao Filtros | `btn-mobile-filters` | Abrir drawer de filtros em mobile |
+**Linhas 28-37 - Ajustar prefixo dos parametros:**
+
+```text
+'inventario': {
+  reportId: '0d93ea95-4d38-4b5e-b8c2-35c784564ff0',
+  parameterMapping: {
+    tipo: 'param_tipo',
+    status: 'param_status',
+    periodoInicio: 'param_periodo_inicio',
+    periodoFim: 'param_periodo_fim',
+    unidadeAlvo: 'param_unidade',
+  }
+},
+```
+
+### Arquivo: `src/components/reports/filters/InventarioFilters.tsx`
+
+**Reescrita completa do componente seguindo o padrao de BensNecessidadeFilters:**
+
+Principais mudancas:
+1. Importar `useReportParameters` e `REPORT_MAPPING`
+2. Importar `MultiSelect` e `Skeleton`
+3. Atualizar schema Zod para arrays
+4. Adicionar hook de parametros dinamicos
+5. Converter Status e Unidade para MultiSelect
+6. Adicionar `handleFormSubmit` com `_labelMappings`
+7. Adicionar IDs em todos os campos
+8. Manter fallback estatico para opcoes
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/reports/ReportsDashboard.tsx` | Ajustar layout de tabs e adicionar IDs |
-| `src/components/reports/MobileFiltersDrawer.tsx` | Adicionar ID ao botao de filtros |
+| `src/config/columnMapping.ts` | Preencher INVENTARIO_COLUMNS |
+| `src/config/reportMapping.ts` | Atualizar prefixo dos parametros |
+| `src/components/reports/filters/InventarioFilters.tsx` | Refatorar com logicas de Bens por Necessidade |
 
 ## Resultado Esperado
 
-1. Em mobile, os tabs exibem texto abreviado ("Bens", "Inventario", "Auditoria")
-2. Nenhum estouro de DIV na area de navegacao
-3. Todos os elementos de navegacao possuem IDs para automacao de testes
-4. Em desktop, os tabs exibem texto completo com icones
-5. Layout responsivo funciona corretamente em todas as resolucoes
+1. Ao clicar na aba "Inventario", os filtros carregam opcoes (dinamicas ou estaticas)
+2. Campos Status e Unidade permitem multi-selecao
+3. Ao clicar em "Gerar", a tabela exibe dados com headers legiveis
+4. Ao clicar em "Exportar", o arquivo e gerado com filtros aplicados
+5. Todos os elementos possuem IDs para automacao de testes
+6. Comportamento identico ao de Bens por Necessidade
 
