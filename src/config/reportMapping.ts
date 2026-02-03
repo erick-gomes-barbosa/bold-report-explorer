@@ -28,11 +28,11 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
   'inventario': {
     reportId: '0d93ea95-4d38-4b5e-b8c2-35c784564ff0',
     parameterMapping: {
-      tipo: 'Tipo',
-      status: 'Status',
-      periodoInicio: 'DataInicio',
-      periodoFim: 'DataFim',
-      unidadeAlvo: 'UnidadeAlvo',
+      tipo: 'param_tipo',
+      status: 'param_status',
+      periodoInicio: 'param_periodo_inicio',
+      periodoFim: 'param_periodo_fim',
+      unidadeAlvo: 'param_unidade',
     }
   },
   'auditoria': {

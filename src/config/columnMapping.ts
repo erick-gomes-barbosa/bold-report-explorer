@@ -20,7 +20,13 @@ export const BENS_NECESSIDADE_COLUMNS: Record<string, string> = {
 
 // Mapeamento para o relatório de Inventário
 export const INVENTARIO_COLUMNS: Record<string, string> = {
-  // Será preenchido conforme a estrutura real do relatório
+  'TextBox9': 'Descrição',
+  'TextBox10': 'Tipo',
+  'TextBox11': 'Status',
+  'TextBox12': 'Data Início',
+  'TextBox13': 'Data Fim',
+  'TextBox14': 'Unidade',
+  'TextBox15': 'Total Itens',
 };
 
 // Mapeamento para o relatório de Auditoria

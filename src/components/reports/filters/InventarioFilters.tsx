@@ -6,7 +6,6 @@ import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, Search, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -29,13 +28,17 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useReportParameters } from '@/hooks/useReportParameters';
+import { REPORT_MAPPING } from '@/config/reportMapping';
 
 const filterSchema = z.object({
   tipo: z.enum(['total', 'parcial']),
-  status: z.string().optional(),
+  status: z.array(z.string()).default([]),
   periodoInicio: z.date().optional(),
   periodoFim: z.date().optional(),
-  unidadeAlvo: z.string().optional(),
+  unidadeAlvo: z.array(z.string()).default([]),
 }).refine((data) => {
   if (data.periodoInicio && data.periodoFim) {
     return data.periodoFim >= data.periodoInicio;
@@ -48,50 +51,80 @@ const filterSchema = z.object({
 
 type FilterFormData = z.infer<typeof filterSchema>;
 
+export interface InventarioFilterSubmitData extends FilterFormData {
+  _labelMappings?: Record<string, Record<string, string>>;
+}
+
 interface InventarioFiltersProps {
-  onSubmit: (data: FilterFormData) => void;
+  onSubmit: (data: InventarioFilterSubmitData) => void;
   loading?: boolean;
 }
 
-const statusOptions = [
-  { value: 'pendente', label: 'Pendente', variant: 'secondary' as const },
-  { value: 'em_andamento', label: 'Em Andamento', variant: 'default' as const },
-  { value: 'concluido', label: 'Concluído', variant: 'outline' as const },
-  { value: 'cancelado', label: 'Cancelado', variant: 'destructive' as const },
+// Opções estáticas de fallback (usadas quando a API não retorna parâmetros)
+const staticStatusOptions = [
+  { value: 'pendente', label: 'Pendente' },
+  { value: 'em_andamento', label: 'Em Andamento' },
+  { value: 'concluido', label: 'Concluído' },
+  { value: 'cancelado', label: 'Cancelado' },
 ];
 
-const unidades = [
-  { id: '1', nome: 'Sede Principal' },
-  { id: '2', nome: 'Almoxarifado Central' },
-  { id: '3', nome: 'Depósito Norte' },
-  { id: '4', nome: 'Filial Sul' },
+const staticUnidadeOptions = [
+  { value: '1', label: 'Sede Principal' },
+  { value: '2', label: 'Almoxarifado Central' },
+  { value: '3', label: 'Depósito Norte' },
+  { value: '4', label: 'Filial Sul' },
 ];
 
 export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps) {
+  const reportId = REPORT_MAPPING['inventario'].reportId;
+  const { 
+    loading: loadingParams, 
+    getOptionsForParameter,
+    getLabelMappingForParameter
+  } = useReportParameters(reportId);
+
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
       tipo: 'total',
-      status: '',
-      unidadeAlvo: '',
+      status: [],
+      unidadeAlvo: [],
     },
   });
+
+  // Wrapper para incluir label mappings no submit
+  const handleFormSubmit = (data: FilterFormData) => {
+    const labelMappings: Record<string, Record<string, string>> = {
+      status: getLabelMappingForParameter('param_status'),
+      unidadeAlvo: getLabelMappingForParameter('param_unidade'),
+    };
+
+    onSubmit({
+      ...data,
+      _labelMappings: labelMappings,
+    });
+  };
 
   const handleReset = () => {
     form.reset({
       tipo: 'total',
-      status: '',
+      status: [],
       periodoInicio: undefined,
       periodoFim: undefined,
-      unidadeAlvo: '',
+      unidadeAlvo: [],
     });
   };
 
-  const selectedStatus = form.watch('status');
+  // Opções dinâmicas dos parâmetros do Bold Reports (com fallback estático)
+  const dynamicStatusOptions = getOptionsForParameter('param_status');
+  const dynamicUnidadeOptions = getOptionsForParameter('param_unidade');
+  
+  const statusOptions = dynamicStatusOptions.length > 0 ? dynamicStatusOptions : staticStatusOptions;
+  const unidadeOptions = dynamicUnidadeOptions.length > 0 ? dynamicUnidadeOptions : staticUnidadeOptions;
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form id="form-inventario" onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
         {/* Tipo */}
         <FormField
           control={form.control}
@@ -101,7 +134,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
               <FormLabel>Tipo de Inventário *</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
-                  <SelectTrigger>
+                  <SelectTrigger id="filter-tipo">
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                 </FormControl>
@@ -115,33 +148,26 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
           )}
         />
 
-        {/* Status com Badges */}
+        {/* Status com MultiSelect */}
         <FormField
           control={form.control}
           name="status"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Status</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos os status">
-                      {selectedStatus && (
-                        <Badge variant={statusOptions.find(s => s.value === selectedStatus)?.variant}>
-                          {statusOptions.find(s => s.value === selectedStatus)?.label}
-                        </Badge>
-                      )}
-                    </SelectValue>
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {statusOptions.map((status) => (
-                    <SelectItem key={status.value} value={status.value}>
-                      <Badge variant={status.variant}>{status.label}</Badge>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    id="filter-status"
+                    options={statusOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos os status"
+                  />
+                )}
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -160,6 +186,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
+                          id="filter-periodo-inicio"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
@@ -171,7 +198,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-0 z-50" align="start">
                       <Calendar
                         mode="single"
                         selected={field.value}
@@ -194,6 +221,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
+                          id="filter-periodo-fim"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
@@ -205,7 +233,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-0 z-50" align="start">
                       <Calendar
                         mode="single"
                         selected={field.value}
@@ -222,27 +250,26 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
           </div>
         </div>
 
-        {/* Unidade Alvo */}
+        {/* Unidade Alvo com MultiSelect */}
         <FormField
           control={form.control}
           name="unidadeAlvo"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Unidade Alvo</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas as unidades" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {unidades.map((unidade) => (
-                    <SelectItem key={unidade.id} value={unidade.id}>
-                      {unidade.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    id="filter-unidade"
+                    options={unidadeOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todas as unidades"
+                  />
+                )}
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -251,6 +278,7 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           <Button
+            id="btn-filter-reset-inventario"
             type="button"
             variant="outline"
             onClick={handleReset}
@@ -260,8 +288,9 @@ export function InventarioFilters({ onSubmit, loading }: InventarioFiltersProps)
             Limpar
           </Button>
           <Button
+            id="btn-filter-submit-inventario"
             type="submit"
-            disabled={loading}
+            disabled={loading || loadingParams}
             className="flex-1 gap-2"
           >
             <Search className="h-4 w-4" />
