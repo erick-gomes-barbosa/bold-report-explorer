@@ -1,4 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
+import { format, parseISO, isValid } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Package, ClipboardList, Search } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportsHeader } from '@/components/reports/ReportsHeader';
@@ -10,6 +12,32 @@ import { Badge } from '@/components/ui/badge';
 import { useReportsData } from '@/hooks/useReportsData';
 import { toast } from 'sonner';
 import type { ReportType, ReportDataItem, ExportFormat } from '@/types/reports';
+
+// Função para formatar datas vindas do CSV
+const formatDateValue = (value: unknown): React.ReactNode => {
+  if (!value || value === '-' || value === '') return '-';
+  
+  const strValue = String(value);
+  
+  // Tenta parsear como ISO date
+  try {
+    const date = parseISO(strValue);
+    if (isValid(date)) {
+      return format(date, 'dd/MM/yyyy', { locale: ptBR });
+    }
+  } catch {}
+  
+  // Tenta parsear como timestamp
+  const numValue = Number(strValue);
+  if (!isNaN(numValue) && numValue > 946684800000) { // > ano 2000
+    const date = new Date(numValue);
+    if (isValid(date)) {
+      return format(date, 'dd/MM/yyyy', { locale: ptBR });
+    }
+  }
+  
+  return strValue; // Retorna original se não conseguir parsear
+};
 
 // Formatadores de células para campos específicos
 const cellFormatters: Record<string, (value: unknown) => React.ReactNode> = {
@@ -50,6 +78,10 @@ const cellFormatters: Record<string, (value: unknown) => React.ReactNode> = {
     if (isNaN(num)) return String(value);
     return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   },
+  // Formatadores de data
+  'Data Início': formatDateValue,
+  'Data Fim': formatDateValue,
+  'Data Aquisição': formatDateValue,
 };
 
 // Column definitions for each report type
