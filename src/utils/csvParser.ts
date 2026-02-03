@@ -153,10 +153,21 @@ export function parseCSVToObjects(
 
     headers.forEach((header, i) => {
       const value = values[i] || '';
-      // Try to parse numbers (handle both . and , as decimal separator)
       const cleanValue = value.replace(/"/g, '').trim();
-      const numValue = parseFloat(cleanValue.replace(',', '.'));
-      obj[header] = !isNaN(numValue) && cleanValue !== '' ? numValue : cleanValue;
+      
+      // Detecta se o valor parece uma data (formato americano ou ISO)
+      // Ex: "1/24/2026 5:56:16 AM", "2026-01-24T05:56:16", "01/24/2026"
+      const looksLikeDate = /^\d{1,2}\/\d{1,2}\/\d{4}/.test(cleanValue) || // mm/dd/yyyy
+                           /^\d{4}-\d{2}-\d{2}/.test(cleanValue);         // yyyy-mm-dd
+      
+      if (looksLikeDate) {
+        // Mantém datas como string para formatação posterior
+        obj[header] = cleanValue;
+      } else {
+        // Try to parse numbers (handle both . and , as decimal separator)
+        const numValue = parseFloat(cleanValue.replace(',', '.'));
+        obj[header] = !isNaN(numValue) && cleanValue !== '' ? numValue : cleanValue;
+      }
     });
 
     return obj;

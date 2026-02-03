@@ -17,9 +17,19 @@ import type { ReportType, ReportDataItem, ExportFormat } from '@/types/reports';
 const formatDateValue = (value: unknown): React.ReactNode => {
   if (!value || value === '-' || value === '') return '-';
   
-  const strValue = String(value);
+  const strValue = String(value).trim();
   
-  // Tenta parsear como ISO date
+  // Tenta parsear formato americano: "1/24/2026 5:56:16 AM" ou "1/24/2026"
+  const usDateMatch = strValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (usDateMatch) {
+    const [, month, day, year] = usDateMatch;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (isValid(date)) {
+      return format(date, 'dd/MM/yyyy', { locale: ptBR });
+    }
+  }
+  
+  // Tenta parsear como ISO date (2026-01-24T...)
   try {
     const date = parseISO(strValue);
     if (isValid(date)) {
@@ -27,7 +37,7 @@ const formatDateValue = (value: unknown): React.ReactNode => {
     }
   } catch {}
   
-  // Tenta parsear como timestamp
+  // Tenta parsear como timestamp numérico
   const numValue = Number(strValue);
   if (!isNaN(numValue) && numValue > 946684800000) { // > ano 2000
     const date = new Date(numValue);
