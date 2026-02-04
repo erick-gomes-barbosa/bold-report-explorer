@@ -38,11 +38,11 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
   'auditoria': {
     reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207',
     parameterMapping: {
-      orgao: 'Orgao',
-      unidade: 'Unidade',
-      setor: 'Setor',
-      periodoInicio: 'DataInicio',
-      periodoFim: 'DataFim',
+      orgao: 'param_orgao',
+      unidade: 'param_unidade',
+      setor: 'param_setor',
+      periodoInicio: 'param_periodo_inicio',
+      periodoFim: 'param_periodo_final',
     }
   },
 };
