@@ -29,8 +29,21 @@ import { useReportParameters } from '@/hooks/useReportParameters';
 import { REPORT_MAPPING } from '@/config/reportMapping';
 
 // Helper to parse default date strings from Bold Reports API
+// Supports ISO dates (YYYY-MM-DD) and Bold Reports expressions like =DateSerial(year,month,day)
 const parseDefaultDate = (value: string | undefined): Date | undefined => {
   if (!value) return undefined;
+  
+  // Handle Bold Reports DateSerial expression: =DateSerial(year, month, day)
+  const dateSerialMatch = value.match(/=DateSerial\((\d+),(\d+),(\d+)\)/i);
+  if (dateSerialMatch) {
+    const year = parseInt(dateSerialMatch[1], 10);
+    const month = parseInt(dateSerialMatch[2], 10) - 1; // JavaScript months are 0-indexed
+    const day = parseInt(dateSerialMatch[3], 10);
+    const date = new Date(year, month, day);
+    return isNaN(date.getTime()) ? undefined : date;
+  }
+  
+  // Handle standard ISO date strings
   const date = new Date(value);
   return isNaN(date.getTime()) ? undefined : date;
 };
