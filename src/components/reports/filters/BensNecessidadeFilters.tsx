@@ -28,7 +28,7 @@ import { useReportParameters } from '@/hooks/useReportParameters';
 import { REPORT_MAPPING } from '@/config/reportMapping';
 
 const filterSchema = z.object({
-  orgaoUnidade: z.array(z.string()).default([]),
+  setor: z.array(z.string()).default([]),
   grupo: z.array(z.string()).default([]),
   situacao: z.array(z.string()).default([]),
   conservacao: z.array(z.string()).default([]),
@@ -68,7 +68,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
-      orgaoUnidade: [],
+      setor: [],
       grupo: [],
       situacao: [],
       conservacao: [],
@@ -78,7 +78,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
   // Wrapper para incluir label mappings no submit
   const handleFormSubmit = (data: FilterFormData) => {
     const labelMappings: Record<string, Record<string, string>> = {
-      orgaoUnidade: getLabelMappingForParameter('param_unidade'),
+      setor: getLabelMappingForParameter('param_setor'),
       grupo: getLabelMappingForParameter('param_grupo'),
       situacao: getLabelMappingForParameter('param_situacao'),
       conservacao: getLabelMappingForParameter('param_estado'),
@@ -92,7 +92,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
 
   const handleReset = () => {
     form.reset({
-      orgaoUnidade: [],
+      setor: [],
       grupo: [],
       situacao: [],
       conservacao: [],
@@ -104,7 +104,7 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
   };
 
   // Opções dinâmicas dos parâmetros do Bold Reports
-  const unidadeOptions = getOptionsForParameter('param_unidade');
+  const setorOptions = getOptionsForParameter('param_setor');
   const grupoOptions = getOptionsForParameter('param_grupo');
   const situacaoOptions = getOptionsForParameter('param_situacao');
   const conservacaoOptions = getOptionsForParameter('param_estado');
@@ -112,20 +112,20 @@ export function BensNecessidadeFilters({ onSubmit, loading }: BensNecessidadeFil
   return (
     <Form {...form}>
       <form id="form-bens-necessidade" onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-4">
-        {/* Órgão/Unidade */}
+        {/* Setor */}
         <FormField
           control={form.control}
-          name="orgaoUnidade"
+          name="setor"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Órgão/Unidade</FormLabel>
+              <FormLabel>Setor</FormLabel>
               <FormControl>
                 {loadingParams ? (
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
-                    id="filter-orgao-unidade"
-                    options={unidadeOptions}
+                    id="filter-setor"
+                    options={setorOptions}
                     value={field.value}
                     onChange={field.onChange}
                     placeholder="Todos"

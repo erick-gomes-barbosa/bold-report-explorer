@@ -20,7 +20,7 @@ export interface Grupo {
 
 // Filter schemas for each report type
 export interface BensNecessidadeFilters {
-  orgaoUnidade?: string;
+  setor?: string;
   grupo?: string;
   situacao?: string;
   conservacao?: string;
