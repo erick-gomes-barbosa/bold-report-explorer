@@ -25,6 +25,15 @@ import {
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCascadingFilters } from '@/hooks/useCascadingFilters';
+import { useReportParameters } from '@/hooks/useReportParameters';
+import { REPORT_MAPPING } from '@/config/reportMapping';
+
+// Helper to parse default date strings from Bold Reports API
+const parseDefaultDate = (value: string | undefined): Date | undefined => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? undefined : date;
+};
 
 const filterSchema = z.object({
   orgao: z.array(z.string()).min(1, { message: "Selecione ao menos um órgão" }),
@@ -56,6 +65,10 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
     resetUnidades,
     resetSetores,
   } = useCascadingFilters();
+
+  // Fetch Bold Reports parameters to get default date values
+  const reportId = REPORT_MAPPING['auditoria'].reportId;
+  const { parameters, loading: loadingParams } = useReportParameters(reportId);
 
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
@@ -104,6 +117,26 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
       }
     }
   }, [watchedOrgao, form, fetchUnidadesByOrgaos, resetUnidades, resetSetores]);
+
+  // Effect to apply default date values from Bold Reports parameters
+  useEffect(() => {
+    if (parameters.length === 0) return;
+
+    const periodoInicioParam = parameters.find(p => p.Name === 'param_periodo_inicio');
+    const periodoFimParam = parameters.find(p => p.Name === 'param_periodo_final');
+
+    const defaultInicio = periodoInicioParam?.DefaultValues?.[0];
+    const defaultFim = periodoFimParam?.DefaultValues?.[0];
+
+    // Only set defaults if fields are currently empty
+    if (defaultInicio && !form.getValues('periodoInicio')) {
+      form.setValue('periodoInicio', parseDefaultDate(defaultInicio));
+    }
+
+    if (defaultFim && !form.getValues('periodoFim')) {
+      form.setValue('periodoFim', parseDefaultDate(defaultFim));
+    }
+  }, [parameters, form]);
 
   // Effect to handle unidade changes -> fetch setores
   useEffect(() => {
