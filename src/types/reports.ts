@@ -39,9 +39,9 @@ export interface InventarioFilters {
 }
 
 export interface AuditoriaFilters {
-  orgao?: string;
-  unidade?: string;
-  setor?: string;
+  orgao: string[];
+  unidade: string[];
+  setor: string[];
   periodoInicio?: Date;
   periodoFim?: Date;
 }

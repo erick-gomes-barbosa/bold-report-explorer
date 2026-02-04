@@ -7,13 +7,6 @@ import { CalendarIcon, Search, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -28,179 +21,159 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useReportParameters } from '@/hooks/useReportParameters';
+import { REPORT_MAPPING } from '@/config/reportMapping';
 
 const filterSchema = z.object({
-  orgao: z.string().min(1, 'Órgão é obrigatório'),
-  unidade: z.string().optional(),
-  setor: z.string().optional(),
-  periodoInicio: z.date({ required_error: 'Data inicial é obrigatória' }),
-  periodoFim: z.date({ required_error: 'Data final é obrigatória' }),
-}).refine((data) => {
-  return data.periodoFim >= data.periodoInicio;
-}, {
-  message: "Data final deve ser maior que a inicial",
-  path: ["periodoFim"],
+  orgao: z.array(z.string()).default([]),
+  unidade: z.array(z.string()).default([]),
+  setor: z.array(z.string()).default([]),
+  periodoInicio: z.date().optional(),
+  periodoFim: z.date().optional(),
 });
 
 type FilterFormData = z.infer<typeof filterSchema>;
 
 interface AuditoriaFiltersProps {
-  onSubmit: (data: FilterFormData) => void;
+  onSubmit: (data: FilterFormData & { _labelMappings?: Record<string, Record<string, string>> }) => void;
   loading?: boolean;
 }
 
-// Hierarchical mock data
-const orgaos = [
-  { 
-    id: '1', 
-    nome: 'Prefeitura Municipal',
-    unidades: [
-      { id: '1-1', nome: 'Secretaria de Administração', setores: ['Recursos Humanos', 'Patrimônio', 'Compras'] },
-      { id: '1-2', nome: 'Secretaria de Finanças', setores: ['Contabilidade', 'Tesouraria', 'Tributos'] },
-    ]
-  },
-  { 
-    id: '2', 
-    nome: 'Câmara Municipal',
-    unidades: [
-      { id: '2-1', nome: 'Gabinete', setores: ['Assessoria', 'Protocolo'] },
-      { id: '2-2', nome: 'Administrativo', setores: ['Pessoal', 'Almoxarifado'] },
-    ]
-  },
-];
-
 export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
+  const reportId = REPORT_MAPPING['auditoria'].reportId;
+  
+  const { 
+    getOptionsForParameter, 
+    getLabelMappingForParameter,
+    loading: loadingParams 
+  } = useReportParameters(reportId);
+
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
-      orgao: '',
-      unidade: '',
-      setor: '',
+      orgao: [],
+      unidade: [],
+      setor: [],
+      periodoInicio: undefined,
+      periodoFim: undefined,
     },
   });
 
-  const selectedOrgao = form.watch('orgao');
-  const selectedUnidade = form.watch('unidade');
+  const handleFormSubmit = (data: FilterFormData) => {
+    const labelMappings: Record<string, Record<string, string>> = {
+      orgao: getLabelMappingForParameter('param_orgao'),
+      unidade: getLabelMappingForParameter('param_unidade'),
+      setor: getLabelMappingForParameter('param_setor'),
+    };
 
-  const unidades = orgaos.find(o => o.id === selectedOrgao)?.unidades || [];
-  const setores = unidades.find(u => u.id === selectedUnidade)?.setores || [];
+    onSubmit({
+      ...data,
+      _labelMappings: labelMappings,
+    });
+  };
 
   const handleReset = () => {
     form.reset({
-      orgao: '',
-      unidade: '',
-      setor: '',
+      orgao: [],
+      unidade: [],
+      setor: [],
       periodoInicio: undefined,
       periodoFim: undefined,
     });
   };
 
-  // Reset dependent fields when parent changes
-  const handleOrgaoChange = (value: string) => {
-    form.setValue('orgao', value);
-    form.setValue('unidade', '');
-    form.setValue('setor', '');
-  };
-
-  const handleUnidadeChange = (value: string) => {
-    form.setValue('unidade', value);
-    form.setValue('setor', '');
-  };
-
-  const isValid = form.formState.isValid;
+  // Get dynamic options from API
+  const orgaoOptions = getOptionsForParameter('param_orgao');
+  const unidadeOptions = getOptionsForParameter('param_unidade');
+  const setorOptions = getOptionsForParameter('param_setor');
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {/* Órgão (obrigatório) */}
+      <form 
+        id="form-auditoria"
+        onSubmit={form.handleSubmit(handleFormSubmit)} 
+        className="space-y-4"
+      >
+        {/* Órgão */}
         <FormField
           control={form.control}
           name="orgao"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Órgão *</FormLabel>
-              <Select onValueChange={handleOrgaoChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o órgão" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {orgaos.map((orgao) => (
-                    <SelectItem key={orgao.id} value={orgao.id}>
-                      {orgao.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormLabel>Órgão</FormLabel>
+              <FormControl>
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    id="filter-orgao"
+                    options={orgaoOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos os órgãos"
+                  />
+                )}
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Unidade (depends on Órgão) */}
+        {/* Unidade */}
         <FormField
           control={form.control}
           name="unidade"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Unidade</FormLabel>
-              <Select 
-                onValueChange={handleUnidadeChange} 
-                value={field.value}
-                disabled={!selectedOrgao}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder={selectedOrgao ? "Selecione a unidade" : "Selecione o órgão primeiro"} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {unidades.map((unidade) => (
-                    <SelectItem key={unidade.id} value={unidade.id}>
-                      {unidade.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    id="filter-unidade"
+                    options={unidadeOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todas as unidades"
+                  />
+                )}
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Setor (depends on Unidade) */}
+        {/* Setor */}
         <FormField
           control={form.control}
           name="setor"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Setor</FormLabel>
-              <Select 
-                onValueChange={field.onChange} 
-                value={field.value}
-                disabled={!selectedUnidade}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder={selectedUnidade ? "Selecione o setor" : "Selecione a unidade primeiro"} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {setores.map((setor) => (
-                    <SelectItem key={setor} value={setor}>
-                      {setor}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                {loadingParams ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <MultiSelect
+                    id="filter-setor"
+                    options={setorOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Todos os setores"
+                  />
+                )}
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Período (obrigatório) */}
+        {/* Período (opcional) */}
         <div className="space-y-2">
-          <Label>Período *</Label>
+          <Label>Período</Label>
           <div className="grid grid-cols-2 gap-2">
             <FormField
               control={form.control}
@@ -211,6 +184,7 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
+                          id="filter-periodo-inicio"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
@@ -245,6 +219,7 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
+                          id="filter-periodo-fim"
                           variant="outline"
                           className={cn(
                             "w-full justify-start text-left font-normal",
@@ -276,6 +251,7 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           <Button
+            id="btn-filter-reset-auditoria"
             type="button"
             variant="outline"
             onClick={handleReset}
@@ -285,8 +261,9 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
             Limpar
           </Button>
           <Button
+            id="btn-filter-submit-auditoria"
             type="submit"
-            disabled={loading || !isValid}
+            disabled={loading}
             className="flex-1 gap-2"
           >
             <Search className="h-4 w-4" />

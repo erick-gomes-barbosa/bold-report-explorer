@@ -31,7 +31,11 @@ export const INVENTARIO_COLUMNS: Record<string, string> = {
 
 // Mapeamento para o relatório de Auditoria
 export const AUDITORIA_COLUMNS: Record<string, string> = {
-  // Será preenchido conforme a estrutura real do relatório
+  'TextBox27': 'Órgão',
+  'TextBox28': 'Unidade',
+  'TextBox29': 'Setor',
+  'TextBox30': 'Data Início',
+  'TextBox31': 'Data Fim',
 };
 
 /**
