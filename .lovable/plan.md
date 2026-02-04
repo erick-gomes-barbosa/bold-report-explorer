@@ -1,124 +1,106 @@
 
-# Plano: Aplicar Valores Padrão de Período no Relatório de Auditoria
+# Plano: Mensagem de Aviso Quando o Relatório Não Retorna Dados
 
-## Problema Identificado
+## Problema
 
-Os campos de **Período Início** e **Período Fim** no formulário de Auditoria não estão sendo inicializados com os valores padrão retornados pela API do Bold Reports.
+Atualmente, quando o usuário gera um relatório e a API retorna com sucesso mas **sem dados** (filtros muito restritivos ou nenhum registro correspondente), o sistema:
 
-### Causa Raiz
+1. Exibe toast "Relatório gerado com sucesso!" ✗
+2. Mostra a tabela vazia com mensagem genérica "Clique em Gerar..." ✗
 
-O componente `AuditoriaFilters` utiliza apenas o hook `useCascadingFilters` (para buscar Órgãos, Unidades e Setores do banco externo), mas não utiliza o hook `useReportParameters` que busca os parâmetros do Bold Reports - incluindo os `DefaultValues` para os campos de data.
-
-### Estrutura Esperada da API Bold Reports
-
-Os parâmetros de data retornam um formato similar a:
-
-```json
-{
-  "Name": "param_periodo_inicio",
-  "DataType": "DateTime",
-  "HasDefault": true,
-  "DefaultValues": ["2024-01-01"]
-}
-```
+O usuário não recebe feedback claro de que os filtros aplicados não encontraram registros.
 
 ---
 
 ## Solução Proposta
 
-### Modificar: `src/components/reports/filters/AuditoriaFilters.tsx`
-
-**Alterações:**
-
-1. **Importar e usar `useReportParameters`**
-   - Adicionar import do hook e da configuração de mapeamento
-   - Chamar o hook com o `reportId` do relatório de Auditoria
-
-2. **Criar função auxiliar para parsing de datas**
-   - Converter strings ISO para objetos `Date`
-   - Tratar diferentes formatos de data
-
-3. **Adicionar `useEffect` para aplicar valores padrão**
-   - Quando os parâmetros forem carregados, extrair `DefaultValues`
-   - Aplicar `periodoInicio` e `periodoFim` no formulário usando `form.setValue()`
-
-4. **Ajustar estado de loading**
-   - Combinar `loadingParams` com os loadings existentes
+Implementar detecção de "retorno vazio" no hook `useReportsData` e propagar essa informação para o componente, permitindo exibir uma mensagem específica e um toast de aviso.
 
 ---
 
-## Fluxo de Dados Atualizado
+## Alterações Técnicas
 
-```text
-1. Componente monta
-   ↓
-2. useCascadingFilters → busca Órgãos (banco externo)
-3. useReportParameters → busca parâmetros (Bold Reports API)
-   ↓
-4. useEffect detecta parâmetros carregados
-   ↓
-5. Extrai DefaultValues de param_periodo_inicio e param_periodo_final
-   ↓
-6. Converte strings para Date e aplica no form
-   ↓
-7. Campos de período exibem datas padrão
+### 1. Modificar `src/hooks/useReportsData.ts`
+
+Adicionar um novo estado `hasNoResults` que será `true` quando a requisição for bem-sucedida mas o CSV não contiver dados:
+
+```typescript
+const [hasNoResults, setHasNoResults] = useState(false);
 ```
+
+Na função `fetchReportData`, após o parsing do CSV:
+
+```typescript
+// Detectar se o CSV tem dados
+if (parsed.data.length === 0) {
+  setHasNoResults(true);
+  setData([]);
+  setColumns([]);
+  // Não lançar erro, apenas sinalizar que não há dados
+  return;
+}
+
+setHasNoResults(false);
+// ... resto do código
+```
+
+Retornar `hasNoResults` no objeto do hook.
 
 ---
 
-## Código das Alterações
+### 2. Modificar `src/components/reports/ReportsDashboard.tsx`
 
-### 1. Imports Adicionais
+Usar o novo estado `hasNoResults` para:
+
+1. Exibir toast de aviso em vez de sucesso quando não houver dados
+2. Passar mensagem diferenciada para o `DataTable`
 
 ```typescript
-import { useReportParameters } from '@/hooks/useReportParameters';
-import { REPORT_MAPPING } from '@/config/reportMapping';
+const { 
+  data, 
+  hasNoResults,  // <-- novo
+  // ...
+} = useReportsData();
+
+// No handleFiltersSubmit:
+if (hasNoResults) {
+  toast.warning('Nenhum registro encontrado para os filtros selecionados');
+} else {
+  toast.success('Relatório gerado com sucesso!');
+}
 ```
 
-### 2. Hook useReportParameters
+Atualizar as `emptyMessage` do DataTable para diferenciar:
+- Estado inicial: "Clique em 'Gerar' para visualizar..."
+- Após busca sem resultados: "Nenhum registro encontrado com os filtros aplicados"
+
+---
+
+### 3. Modificar `src/components/reports/DataTable.tsx`
+
+Adicionar suporte para um novo prop `hasSearched` ou detectar internamente quando houve uma busca sem resultados:
 
 ```typescript
-const reportId = REPORT_MAPPING['auditoria'].reportId;
-const { parameters, loading: loadingParams } = useReportParameters(reportId);
+interface DataTableProps<T extends { id: string }> {
+  // ... props existentes
+  noResultsMessage?: string;  // Mensagem específica para quando não há resultados após busca
+}
 ```
 
-### 3. Função de Parsing de Data
+Atualizar a UI do estado vazio para mostrar uma mensagem mais clara quando é resultado de filtros:
 
-```typescript
-const parseDefaultDate = (value: string | undefined): Date | undefined => {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return isNaN(date.getTime()) ? undefined : date;
-};
 ```
-
-### 4. useEffect para Aplicar Defaults
-
-```typescript
-// Apply default date values from Bold Reports parameters
-useEffect(() => {
-  if (parameters.length === 0) return;
-  
-  const periodoInicioParam = parameters.find(p => p.Name === 'param_periodo_inicio');
-  const periodoFimParam = parameters.find(p => p.Name === 'param_periodo_final');
-  
-  const defaultInicio = periodoInicioParam?.DefaultValues?.[0];
-  const defaultFim = periodoFimParam?.DefaultValues?.[0];
-  
-  if (defaultInicio && !form.getValues('periodoInicio')) {
-    form.setValue('periodoInicio', parseDefaultDate(defaultInicio));
-  }
-  
-  if (defaultFim && !form.getValues('periodoFim')) {
-    form.setValue('periodoFim', parseDefaultDate(defaultFim));
-  }
-}, [parameters, form]);
-```
-
-### 5. Loading Combinado (opcional)
-
-```typescript
-const isLoading = loading || loadingOrgaos || loadingParams;
+┌────────────────────────────────────────┐
+│                                        │
+│       [Ícone de busca/filtro]          │
+│                                        │
+│   Nenhum registro encontrado           │
+│                                        │
+│   Os filtros aplicados não retornaram  │
+│   resultados. Tente ajustar os         │
+│   critérios de busca.                  │
+│                                        │
+└────────────────────────────────────────┘
 ```
 
 ---
@@ -127,24 +109,39 @@ const isLoading = loading || loadingOrgaos || loadingParams;
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/reports/filters/AuditoriaFilters.tsx` | Adicionar `useReportParameters`, parsing de datas padrão, e `useEffect` para aplicar valores |
+| `src/hooks/useReportsData.ts` | Adicionar estado `hasNoResults` e lógica de detecção |
+| `src/components/reports/ReportsDashboard.tsx` | Usar `hasNoResults` para toast e mensagens |
+| `src/components/reports/DataTable.tsx` | Melhorar UI do estado vazio com mensagem diferenciada |
 
 ---
 
-## Validações
+## Fluxo de Dados Atualizado
 
-Após implementação, verificar:
-
-1. Ao abrir a aba Auditoria, os campos de Período devem exibir as datas padrão da API
-2. Limpar filtros (botão "Limpar") deve manter ou resetar as datas padrão
-3. A exportação do relatório deve incluir os valores de período corretamente
-4. Selecionar datas manualmente deve substituir os valores padrão
+```text
+1. Usuário aplica filtros e clica "Gerar"
+   ↓
+2. fetchReportData() é chamado
+   ↓
+3. API retorna CSV
+   ↓
+4. parseBase64CSVToObjects() processa CSV
+   ↓
+5. Verifica: parsed.data.length === 0 ?
+   ↓
+   ├─ SIM → setHasNoResults(true), setData([])
+   │        → Toast: "Nenhum registro encontrado..."
+   │        → DataTable mostra mensagem específica
+   │
+   └─ NÃO → setHasNoResults(false), setData(parsed.data)
+            → Toast: "Relatório gerado com sucesso!"
+            → DataTable exibe dados
+```
 
 ---
 
-## Notas Técnicas
+## Benefícios
 
-- Os nomes dos parâmetros são `param_periodo_inicio` e `param_periodo_final` (conforme `reportMapping.ts`)
-- O campo `DefaultValues` é um array de strings; usamos o primeiro elemento `[0]`
-- O parsing usa `new Date()` que aceita formatos ISO (`YYYY-MM-DD`)
-- A verificação `!form.getValues(...)` evita sobrescrever valores já definidos pelo usuário
+- Feedback claro para o usuário sobre o resultado da busca
+- Diferenciação entre "ainda não buscou" e "buscou mas não encontrou"
+- Toast de aviso (amarelo) em vez de sucesso (verde) quando não há dados
+- Orientação para o usuário ajustar os filtros
