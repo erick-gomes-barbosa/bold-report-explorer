@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,8 +24,7 @@ import {
 } from '@/components/ui/form';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useReportParameters } from '@/hooks/useReportParameters';
-import { REPORT_MAPPING } from '@/config/reportMapping';
+import { useCascadingFilters } from '@/hooks/useCascadingFilters';
 
 const filterSchema = z.object({
   orgao: z.array(z.string()).default([]),
@@ -42,13 +42,20 @@ interface AuditoriaFiltersProps {
 }
 
 export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
-  const reportId = REPORT_MAPPING['auditoria'].reportId;
-  
-  const { 
-    getOptionsForParameter, 
-    getLabelMappingForParameter,
-    loading: loadingParams 
-  } = useReportParameters(reportId);
+  const {
+    orgaos,
+    unidades,
+    setores,
+    loadingOrgaos,
+    loadingUnidades,
+    loadingSetores,
+    fetchUnidadesByOrgaos,
+    fetchSetoresByUnidades,
+    unidadesDisabled,
+    setoresDisabled,
+    resetUnidades,
+    resetSetores,
+  } = useCascadingFilters();
 
   const form = useForm<FilterFormData>({
     resolver: zodResolver(filterSchema),
@@ -61,16 +68,89 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
     },
   });
 
-  const handleFormSubmit = (data: FilterFormData) => {
-    const labelMappings: Record<string, Record<string, string>> = {
-      orgao: getLabelMappingForParameter('param_orgao'),
-      unidade: getLabelMappingForParameter('param_unidade'),
-      setor: getLabelMappingForParameter('param_setor'),
-    };
+  // Track previous values to detect changes
+  const prevOrgaoRef = useRef<string[]>([]);
+  const prevUnidadeRef = useRef<string[]>([]);
 
+  // Watch for changes in orgao selection
+  const watchedOrgao = form.watch('orgao');
+  const watchedUnidade = form.watch('unidade');
+
+  // Effect to handle orgao changes -> fetch unidades
+  useEffect(() => {
+    const prevOrgao = prevOrgaoRef.current;
+    const currentOrgao = watchedOrgao || [];
+    
+    // Check if orgao selection actually changed
+    const hasChanged = 
+      prevOrgao.length !== currentOrgao.length ||
+      prevOrgao.some((id, idx) => id !== currentOrgao[idx]);
+
+    if (hasChanged) {
+      prevOrgaoRef.current = currentOrgao;
+      
+      if (currentOrgao.length === 0) {
+        // Reset unidade and setor when orgao is cleared
+        form.setValue('unidade', []);
+        form.setValue('setor', []);
+        resetUnidades();
+        resetSetores();
+      } else {
+        // Fetch unidades for selected orgaos
+        form.setValue('unidade', []);
+        form.setValue('setor', []);
+        resetSetores();
+        fetchUnidadesByOrgaos(currentOrgao);
+      }
+    }
+  }, [watchedOrgao, form, fetchUnidadesByOrgaos, resetUnidades, resetSetores]);
+
+  // Effect to handle unidade changes -> fetch setores
+  useEffect(() => {
+    const prevUnidade = prevUnidadeRef.current;
+    const currentUnidade = watchedUnidade || [];
+    
+    // Check if unidade selection actually changed
+    const hasChanged = 
+      prevUnidade.length !== currentUnidade.length ||
+      prevUnidade.some((id, idx) => id !== currentUnidade[idx]);
+
+    if (hasChanged) {
+      prevUnidadeRef.current = currentUnidade;
+      
+      if (currentUnidade.length === 0) {
+        // Reset setor when unidade is cleared
+        form.setValue('setor', []);
+        resetSetores();
+      } else {
+        // Fetch setores for selected unidades
+        form.setValue('setor', []);
+        fetchSetoresByUnidades(currentUnidade);
+      }
+    }
+  }, [watchedUnidade, form, fetchSetoresByUnidades, resetSetores]);
+
+  // Build label mappings from the loaded options
+  const buildLabelMappings = () => {
+    const orgaoMapping: Record<string, string> = {};
+    const unidadeMapping: Record<string, string> = {};
+    const setorMapping: Record<string, string> = {};
+
+    orgaos.forEach(opt => { orgaoMapping[opt.value] = opt.label; });
+    unidades.forEach(opt => { unidadeMapping[opt.value] = opt.label; });
+    setores.forEach(opt => { setorMapping[opt.value] = opt.label; });
+
+    return {
+      orgao: orgaoMapping,
+      unidade: unidadeMapping,
+      setor: setorMapping,
+    };
+  };
+
+  const handleFormSubmit = (data: FilterFormData) => {
     onSubmit({
       ...data,
-      _labelMappings: labelMappings,
+      _labelMappings: buildLabelMappings(),
     });
   };
 
@@ -82,12 +162,11 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
       periodoInicio: undefined,
       periodoFim: undefined,
     });
+    prevOrgaoRef.current = [];
+    prevUnidadeRef.current = [];
+    resetUnidades();
+    resetSetores();
   };
-
-  // Get dynamic options from API
-  const orgaoOptions = getOptionsForParameter('param_orgao');
-  const unidadeOptions = getOptionsForParameter('param_unidade');
-  const setorOptions = getOptionsForParameter('param_setor');
 
   return (
     <Form {...form}>
@@ -104,12 +183,12 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
             <FormItem>
               <FormLabel>Órgão</FormLabel>
               <FormControl>
-                {loadingParams ? (
+                {loadingOrgaos ? (
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
                     id="filter-orgao"
-                    options={orgaoOptions}
+                    options={orgaos}
                     value={field.value}
                     onChange={field.onChange}
                     placeholder="Todos os órgãos"
@@ -129,15 +208,16 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
             <FormItem>
               <FormLabel>Unidade</FormLabel>
               <FormControl>
-                {loadingParams ? (
+                {loadingUnidades ? (
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
                     id="filter-unidade"
-                    options={unidadeOptions}
+                    options={unidades}
                     value={field.value}
                     onChange={field.onChange}
-                    placeholder="Todas as unidades"
+                    placeholder={unidadesDisabled ? "Selecione um órgão primeiro" : "Todas as unidades"}
+                    disabled={unidadesDisabled}
                   />
                 )}
               </FormControl>
@@ -154,15 +234,16 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
             <FormItem>
               <FormLabel>Setor</FormLabel>
               <FormControl>
-                {loadingParams ? (
+                {loadingSetores ? (
                   <Skeleton className="h-10 w-full" />
                 ) : (
                   <MultiSelect
                     id="filter-setor"
-                    options={setorOptions}
+                    options={setores}
                     value={field.value}
                     onChange={field.onChange}
-                    placeholder="Todos os setores"
+                    placeholder={setoresDisabled ? "Selecione uma unidade primeiro" : "Todos os setores"}
+                    disabled={setoresDisabled}
                   />
                 )}
               </FormControl>
