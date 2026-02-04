@@ -142,12 +142,17 @@ export function AuditoriaFilters({ onSubmit, loading }: AuditoriaFiltersProps) {
     const defaultFim = periodoFimParam?.DefaultValues?.[0];
 
     // Only set defaults if fields are currently empty
-    if (defaultInicio && !form.getValues('periodoInicio')) {
-      form.setValue('periodoInicio', parseDefaultDate(defaultInicio));
+    if (!form.getValues('periodoInicio')) {
+      const parsedInicio = parseDefaultDate(defaultInicio);
+      if (parsedInicio) {
+        form.setValue('periodoInicio', parsedInicio);
+      }
     }
 
-    if (defaultFim && !form.getValues('periodoFim')) {
-      form.setValue('periodoFim', parseDefaultDate(defaultFim));
+    // Use today's date as fallback if no default is provided by the API
+    if (!form.getValues('periodoFim')) {
+      const parsedFim = parseDefaultDate(defaultFim);
+      form.setValue('periodoFim', parsedFim ?? new Date());
     }
   }, [parameters, form]);
 
