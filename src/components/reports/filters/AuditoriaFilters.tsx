@@ -27,9 +27,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCascadingFilters } from '@/hooks/useCascadingFilters';
 
 const filterSchema = z.object({
-  orgao: z.array(z.string()).default([]),
-  unidade: z.array(z.string()).default([]),
-  setor: z.array(z.string()).default([]),
+  orgao: z.array(z.string()).min(1, { message: "Selecione ao menos um órgão" }),
+  unidade: z.array(z.string()).min(1, { message: "Selecione ao menos uma unidade" }),
+  setor: z.array(z.string()).min(1, { message: "Selecione ao menos um setor" }),
   periodoInicio: z.date().optional(),
   periodoFim: z.date().optional(),
 });
