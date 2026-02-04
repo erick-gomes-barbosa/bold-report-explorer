@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeft, ChevronRight, FileX } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileX, SearchX, FileText } from 'lucide-react';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 export interface Column<T> {
@@ -28,6 +28,8 @@ interface DataTableProps<T extends { id: string }> {
   totalCount?: number;
   onPageChange?: (pageIndex: number) => void;
   emptyMessage?: string;
+  noResultsMessage?: string;
+  hasSearched?: boolean;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -40,6 +42,8 @@ export function DataTable<T extends { id: string }>({
   totalCount = 0,
   onPageChange,
   emptyMessage = "Nenhum registro encontrado",
+  noResultsMessage = "Nenhum registro encontrado para os filtros aplicados",
+  hasSearched = false,
 }: DataTableProps<T>) {
   const totalPages = Math.ceil(totalCount / pageSize);
   const canGoPrevious = pageIndex > 0;
@@ -68,14 +72,30 @@ export function DataTable<T extends { id: string }>({
     );
   }
 
-  // Empty state
+  // Empty state - differentiate between "no search yet" and "no results found"
   if (data.length === 0) {
+    // User has searched but no results found
+    if (hasSearched) {
+      return (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-12 text-center">
+          <SearchX className="h-12 w-12 mx-auto mb-4 text-warning/70" />
+          <p className="text-foreground font-medium">{noResultsMessage}</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Os filtros aplicados não retornaram resultados.
+            <br />
+            Tente ajustar os critérios de busca.
+          </p>
+        </div>
+      );
+    }
+
+    // Initial state - no search yet
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-12 text-center">
-        <FileX className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+        <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
         <p className="text-muted-foreground">{emptyMessage}</p>
         <p className="text-sm text-muted-foreground/70 mt-1">
-          Ajuste os filtros ou tente novamente
+          Preencha os filtros e clique em "Gerar"
         </p>
       </div>
     );

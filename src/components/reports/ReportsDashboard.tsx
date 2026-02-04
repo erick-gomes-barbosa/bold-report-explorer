@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Package, ClipboardList, Search } from 'lucide-react';
@@ -212,7 +212,9 @@ export function ReportsDashboard() {
     data, 
     columns: csvColumns,
     loading, 
-    error, 
+    error,
+    hasNoResults,
+    hasSearched,
     pagination,
     fetchReportData,
     exportData,
@@ -245,11 +247,39 @@ export function ReportsDashboard() {
     setCurrentFilters(filters);
     try {
       await fetchReportData(activeTab, filters, 0);
-      toast.success('Relatório gerado com sucesso!');
     } catch (err) {
       toast.error('Erro ao gerar relatório');
     }
   }, [activeTab, fetchReportData]);
+
+  // Ref para evitar toasts duplicados
+  const lastToastRef = useRef<{ hasSearched: boolean; hasNoResults: boolean; dataLength: number } | null>(null);
+
+  // Exibir toast apropriado após o fetch
+  useEffect(() => {
+    if (loading) return;
+    
+    const current = { hasSearched, hasNoResults, dataLength: data.length };
+    const last = lastToastRef.current;
+    
+    // Evitar disparar toast se o estado não mudou
+    if (last && 
+        last.hasSearched === current.hasSearched && 
+        last.hasNoResults === current.hasNoResults && 
+        last.dataLength === current.dataLength) {
+      return;
+    }
+    
+    lastToastRef.current = current;
+    
+    if (hasSearched && !error) {
+      if (hasNoResults) {
+        toast.warning('Nenhum registro encontrado para os filtros selecionados');
+      } else if (data.length > 0) {
+        toast.success('Relatório gerado com sucesso!');
+      }
+    }
+  }, [hasSearched, hasNoResults, loading, error, data.length]);
 
   const handlePageChange = useCallback((page: number) => {
     changePage(page);
@@ -349,6 +379,8 @@ export function ReportsDashboard() {
                   totalCount={pagination.totalCount}
                   onPageChange={handlePageChange}
                   emptyMessage="Clique em 'Gerar' para visualizar os bens"
+                  noResultsMessage="Nenhum bem encontrado para os filtros aplicados"
+                  hasSearched={hasSearched}
                 />
               </TabsContent>
 
@@ -363,6 +395,8 @@ export function ReportsDashboard() {
                   totalCount={pagination.totalCount}
                   onPageChange={handlePageChange}
                   emptyMessage="Clique em 'Gerar' para visualizar os inventários"
+                  noResultsMessage="Nenhum inventário encontrado para os filtros aplicados"
+                  hasSearched={hasSearched}
                 />
               </TabsContent>
 
@@ -377,6 +411,8 @@ export function ReportsDashboard() {
                   totalCount={pagination.totalCount}
                   onPageChange={handlePageChange}
                   emptyMessage="Clique em 'Gerar' para visualizar as auditorias"
+                  noResultsMessage="Nenhuma auditoria encontrada para os filtros aplicados"
+                  hasSearched={hasSearched}
                 />
               </TabsContent>
             </div>
