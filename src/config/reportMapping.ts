@@ -15,7 +15,7 @@ export const REPORT_MAPPING: Record<ReportType, ReportConfig> = {
   'bens-necessidade': {
     reportId: '8fae90ee-011b-40d4-a53a-65b74f97b3cb',
     parameterMapping: {
-      orgaoUnidade: 'param_unidade',
+      setor: 'param_setor',
       grupo: 'param_grupo',
       situacao: 'param_situacao',
       conservacao: 'param_estado',
