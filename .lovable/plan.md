@@ -1,252 +1,168 @@
 
-# Plano: Corrigir Formatacao de Datas e Campo Tipo de Inventario
+# Plano: Corrigir Divergencias de Parametros e Mapeamentos
 
 ## Problemas Identificados
 
-### 1. Colunas de Data Mal Formatadas
-As colunas "Data Inicio" e "Data Fim" exibem valores brutos do CSV (possivelmente ISO format como "2024-01-15T00:00:00") porque:
-- O `csvParser.ts` nao possui logica para detectar e formatar datas
-- O `cellFormatters` no `ReportsDashboard.tsx` nao possui formatadores para colunas de data
-- Os dados chegam como string e sao exibidos diretamente
+Apos realizar requisicoes a API Bold Reports, identifiquei as seguintes divergencias:
 
-### 2. Campo Tipo de Inventario com Selecao Unica
-O campo "Tipo de Inventario" esta implementado com `Select` (selecao unica) quando deveria ser `MultiSelect`:
-- Schema Zod usa `z.enum(['total', 'parcial'])` ao inves de `z.array(z.string())`
-- Componente usa `<Select>` ao inves de `<MultiSelect>`
-- Default value e `'total'` (string) ao inves de `[]` (array)
+### 1. Relatorio de Auditoria - Mapeamento de Parametros Incorreto
 
-## Solucao Proposta
+A configuracao atual em `reportMapping.ts` usa nomes de parametros errados:
 
-### 1. Adicionar Formatador de Datas no Dashboard
+| Campo | Configuracao Atual | Parametro Real da API |
+|-------|-------------------|----------------------|
+| orgao | `Orgao` | `param_orgao` |
+| unidade | `Unidade` | `param_unidade` |
+| setor | `Setor` | `param_setor` |
+| periodoInicio | `DataInicio` | `param_periodo_inicio` |
+| periodoFim | `DataFim` | `param_periodo_final` |
 
-Criar formatadores para colunas de data que detectam e convertem para formato brasileiro:
+### 2. Relatorio de Auditoria - Colunas CSV Nao Mapeadas
 
-```text
-Novo formatador em cellFormatters:
-'Data Início': (value) => formatDate(value)
-'Data Fim': (value) => formatDate(value)
-```
+O CSV exportado retorna headers genericos (`TextBox27-31`) que precisam ser mapeados:
 
-Funcao auxiliar `formatDate`:
-- Detecta se valor parece uma data (ISO, timestamp, etc)
-- Converte para formato "dd/MM/yyyy" usando date-fns
-- Retorna valor original se nao conseguir parsear
+| Header CSV | Nome Amigavel |
+|------------|---------------|
+| TextBox27 | Orgao |
+| TextBox28 | Unidade |
+| TextBox29 | Setor |
+| TextBox30 | Data Inicio |
+| TextBox31 | Data Fim |
 
-### 2. Converter Campo Tipo para MultiSelect
+### 3. Relatorio de Auditoria - Filtros Estaticos ao Inves de Dinamicos
 
-Atualizar o componente `InventarioFilters.tsx`:
+O componente `AuditoriaFilters.tsx` usa dados mockados estaticos, mas a API retorna parametros dinamicos com `AvailableValues` para:
+- `param_orgao` (MultiValue - 4 opcoes)
+- `param_unidade` (MultiValue - 6 opcoes)
+- `param_setor` (MultiValue - 11 opcoes)
+- `param_periodo_inicio` (DateTime)
+- `param_periodo_final` (DateTime)
 
-**Schema Zod:**
-```text
-Antes: tipo: z.enum(['total', 'parcial'])
-Depois: tipo: z.array(z.string()).default([])
-```
+## Alteracoes Necessarias
 
-**Default Values:**
-```text
-Antes: tipo: 'total'
-Depois: tipo: []
-```
+### Arquivo 1: `src/config/reportMapping.ts`
 
-**Componente:**
-```text
-Antes: <Select> com <SelectItem>
-Depois: <MultiSelect> com staticTipoOptions
-```
-
-**Opcoes Estaticas:**
-```text
-const staticTipoOptions = [
-  { value: 'total', label: 'Total' },
-  { value: 'parcial', label: 'Parcial' },
-];
-```
-
-### 3. Atualizar Label Mappings
-
-Incluir mapeamento para o campo tipo no `handleFormSubmit`:
+**Linhas 38-47 - Corrigir mapeamento de parametros da Auditoria:**
 
 ```text
-const labelMappings = {
-  tipo: getLabelMappingForParameter('param_tipo'),
-  status: getLabelMappingForParameter('param_status'),
-  unidadeAlvo: getLabelMappingForParameter('param_unidade'),
-};
-```
-
-## Alteracoes Detalhadas
-
-### Arquivo: `src/components/reports/ReportsDashboard.tsx`
-
-**Adicionar import do date-fns (linha 1):**
-```text
-import { format, parseISO, isValid } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-```
-
-**Adicionar funcao auxiliar e formatadores de data (apos linha 14):**
-```text
-// Função para formatar datas vindas do CSV
-const formatDateValue = (value: unknown): React.ReactNode => {
-  if (!value || value === '-' || value === '') return '-';
-  
-  const strValue = String(value);
-  
-  // Tenta parsear como ISO date
-  try {
-    const date = parseISO(strValue);
-    if (isValid(date)) {
-      return format(date, 'dd/MM/yyyy', { locale: ptBR });
-    }
-  } catch {}
-  
-  // Tenta parsear como timestamp
-  const numValue = Number(strValue);
-  if (!isNaN(numValue) && numValue > 946684800000) { // > ano 2000
-    const date = new Date(numValue);
-    if (isValid(date)) {
-      return format(date, 'dd/MM/yyyy', { locale: ptBR });
-    }
+Antes:
+'auditoria': {
+  reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207',
+  parameterMapping: {
+    orgao: 'Orgao',
+    unidade: 'Unidade',
+    setor: 'Setor',
+    periodoInicio: 'DataInicio',
+    periodoFim: 'DataFim',
   }
-  
-  return strValue; // Retorna original se não conseguir parsear
-};
-
-// Adicionar aos cellFormatters:
-const cellFormatters: Record<string, (value: unknown) => React.ReactNode> = {
-  // ... formatadores existentes ...
-  'Data Início': formatDateValue,
-  'Data Fim': formatDateValue,
-  'Data Aquisição': formatDateValue,
-};
-```
-
-### Arquivo: `src/components/reports/filters/InventarioFilters.tsx`
-
-**Linha 37 - Alterar schema do campo tipo:**
-```text
-Antes:
-tipo: z.enum(['total', 'parcial']),
-
-Depois:
-tipo: z.array(z.string()).default([]),
-```
-
-**Linha 63-76 - Adicionar opcoes estaticas para tipo:**
-```text
-const staticTipoOptions = [
-  { value: 'total', label: 'Total' },
-  { value: 'parcial', label: 'Parcial' },
-];
-```
-
-**Linha 88-92 - Alterar default value:**
-```text
-Antes:
-defaultValues: {
-  tipo: 'total',
-  status: [],
-  unidadeAlvo: [],
 },
 
 Depois:
-defaultValues: {
-  tipo: [],
-  status: [],
-  unidadeAlvo: [],
+'auditoria': {
+  reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207',
+  parameterMapping: {
+    orgao: 'param_orgao',
+    unidade: 'param_unidade',
+    setor: 'param_setor',
+    periodoInicio: 'param_periodo_inicio',
+    periodoFim: 'param_periodo_final',
+  }
 },
 ```
 
-**Linhas 97-100 - Adicionar tipo ao labelMappings:**
+### Arquivo 2: `src/config/columnMapping.ts`
+
+**Linhas 32-35 - Preencher mapeamento de colunas da Auditoria:**
+
 ```text
-const labelMappings: Record<string, Record<string, string>> = {
-  tipo: getLabelMappingForParameter('param_tipo'),
-  status: getLabelMappingForParameter('param_status'),
-  unidadeAlvo: getLabelMappingForParameter('param_unidade'),
+Antes:
+export const AUDITORIA_COLUMNS: Record<string, string> = {
+  // Será preenchido conforme a estrutura real do relatório
+};
+
+Depois:
+export const AUDITORIA_COLUMNS: Record<string, string> = {
+  'TextBox27': 'Órgão',
+  'TextBox28': 'Unidade',
+  'TextBox29': 'Setor',
+  'TextBox30': 'Data Início',
+  'TextBox31': 'Data Fim',
 };
 ```
 
-**Linhas 109-115 - Alterar reset para tipo array:**
+### Arquivo 3: `src/components/reports/filters/AuditoriaFilters.tsx`
+
+**Refatoracao completa para usar filtros dinamicos:**
+
+Principais mudancas:
+1. Importar `useReportParameters`, `MultiSelect`, `Skeleton`
+2. Remover dados mockados estaticos (`orgaos`)
+3. Atualizar schema Zod para arrays (multi-select)
+4. Adicionar hook `useReportParameters` para carregar opcoes da API
+5. Converter campos para `MultiSelect` (Orgao, Unidade, Setor)
+6. Adicionar `_labelMappings` no submit
+7. Adicionar IDs para testes automatizados
+8. Manter campos de periodo como opcionais
+
+**Novo Schema Zod:**
 ```text
-form.reset({
-  tipo: [],
-  status: [],
-  periodoInicio: undefined,
-  periodoFim: undefined,
-  unidadeAlvo: [],
-});
+orgao: z.array(z.string()).default([]),
+unidade: z.array(z.string()).default([]),
+setor: z.array(z.string()).default([]),
+periodoInicio: z.date().optional(),
+periodoFim: z.date().optional(),
 ```
 
-**Linhas 118-123 - Adicionar opcoes dinamicas para tipo:**
-```text
-const dynamicTipoOptions = getOptionsForParameter('param_tipo');
-const tipoOptions = dynamicTipoOptions.length > 0 ? dynamicTipoOptions : staticTipoOptions;
-```
+**IDs para Testes:**
+| Elemento | ID |
+|----------|-----|
+| Formulario | `form-auditoria` |
+| Campo Orgao | `filter-orgao` |
+| Campo Unidade | `filter-unidade` |
+| Campo Setor | `filter-setor` |
+| Campo Periodo Inicio | `filter-periodo-inicio` |
+| Campo Periodo Fim | `filter-periodo-fim` |
+| Botao Limpar | `btn-filter-reset-auditoria` |
+| Botao Gerar | `btn-filter-submit-auditoria` |
 
-**Linhas 129-149 - Substituir Select por MultiSelect:**
+### Arquivo 4: `src/types/reports.ts`
+
+**Linhas 40-46 - Atualizar tipo AuditoriaFilters para arrays:**
+
 ```text
 Antes:
-<FormField
-  control={form.control}
-  name="tipo"
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>Tipo de Inventário *</FormLabel>
-      <Select onValueChange={field.onChange} value={field.value}>
-        <FormControl>
-          <SelectTrigger id="filter-tipo">
-            <SelectValue placeholder="Selecione..." />
-          </SelectTrigger>
-        </FormControl>
-        <SelectContent>
-          <SelectItem value="total">Total</SelectItem>
-          <SelectItem value="parcial">Parcial</SelectItem>
-        </SelectContent>
-      </Select>
-      <FormMessage />
-    </FormItem>
-  )}
-/>
+export interface AuditoriaFilters {
+  orgao?: string;
+  unidade?: string;
+  setor?: string;
+  periodoInicio?: Date;
+  periodoFim?: Date;
+}
 
 Depois:
-<FormField
-  control={form.control}
-  name="tipo"
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>Tipo de Inventário</FormLabel>
-      <FormControl>
-        {loadingParams ? (
-          <Skeleton className="h-10 w-full" />
-        ) : (
-          <MultiSelect
-            id="filter-tipo"
-            options={tipoOptions}
-            value={field.value}
-            onChange={field.onChange}
-            placeholder="Todos os tipos"
-          />
-        )}
-      </FormControl>
-      <FormMessage />
-    </FormItem>
-  )}
-/>
+export interface AuditoriaFilters {
+  orgao: string[];
+  unidade: string[];
+  setor: string[];
+  periodoInicio?: Date;
+  periodoFim?: Date;
+}
 ```
-
-**Remover imports nao utilizados:**
-- Remover `Select, SelectContent, SelectItem, SelectTrigger, SelectValue` pois nao serao mais usados
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/reports/ReportsDashboard.tsx` | Adicionar formatadores de data |
-| `src/components/reports/filters/InventarioFilters.tsx` | Converter tipo para MultiSelect |
+| `src/config/reportMapping.ts` | Corrigir prefixo dos parametros de Auditoria |
+| `src/config/columnMapping.ts` | Preencher AUDITORIA_COLUMNS com TextBox27-31 |
+| `src/components/reports/filters/AuditoriaFilters.tsx` | Refatorar para filtros dinamicos com MultiSelect |
+| `src/types/reports.ts` | Atualizar interface AuditoriaFilters |
 
 ## Resultado Esperado
 
-1. Colunas "Data Inicio" e "Data Fim" exibem datas no formato brasileiro (dd/MM/yyyy)
-2. Campo "Tipo de Inventario" permite selecao multipla (ou nenhuma para "todos")
-3. Filtros vazios disparam comportamento "Selecionar Todos" no Bold Reports
-4. Consistencia com o padrao de Bens por Necessidade
+1. Ao clicar na aba "Auditoria", os filtros carregam opcoes dinamicas da API
+2. Campos Orgao, Unidade e Setor permitem multi-selecao
+3. Ao clicar em "Gerar", a tabela exibe dados com headers legiveis (Orgao, Unidade, etc.)
+4. Ao clicar em "Exportar", o arquivo e gerado com filtros aplicados corretamente
+5. Todos os elementos possuem IDs para automacao de testes
+6. Comportamento consistente com Bens por Necessidade e Inventario
