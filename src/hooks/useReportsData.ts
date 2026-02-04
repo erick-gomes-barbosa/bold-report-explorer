@@ -26,6 +26,8 @@ export function useReportsData() {
   const [columns, setColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasNoResults, setHasNoResults] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 10,
@@ -97,6 +99,23 @@ export function useReportsData() {
       console.log('Mapped Headers:', parsed.headers);
       console.log('Row count:', parsed.data.length);
       console.groupEnd();
+
+      setHasSearched(true);
+
+      // Detectar se o CSV não tem dados
+      if (parsed.data.length === 0) {
+        setHasNoResults(true);
+        setData([]);
+        setColumns(parsed.headers);
+        setPagination(prev => ({
+          ...prev,
+          pageIndex: 0,
+          totalCount: 0,
+        }));
+        return;
+      }
+
+      setHasNoResults(false);
 
       // Apply client-side pagination
       const pageSize = pagination.pageSize;
@@ -206,6 +225,8 @@ export function useReportsData() {
     setData([]);
     setColumns([]);
     setError(null);
+    setHasNoResults(false);
+    setHasSearched(false);
     setPagination(prev => ({ ...prev, pageIndex: 0, totalCount: 0 }));
   }, []);
 
@@ -214,6 +235,8 @@ export function useReportsData() {
     columns,
     loading,
     error,
+    hasNoResults,
+    hasSearched,
     pagination,
     fetchReportData,
     exportData,
