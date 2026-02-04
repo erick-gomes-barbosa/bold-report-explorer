@@ -1,159 +1,193 @@
 
-# Plano: Corrigir Divergências em Bens por Necessidade e Inventário
 
-## Resumo das Divergências Identificadas
+# Plano: Filtros em Cascata para Auditoria com Banco de Dados Externo
 
-Após analisar os arquivos CSV e as imagens de parâmetros fornecidas, identifiquei as seguintes divergências:
+## Visão Geral
 
----
-
-## 1. Bens por Necessidade
-
-### 1.1 Parâmetros (Divergência Encontrada)
-
-O primeiro parâmetro está incorreto:
-
-| Campo UI | Configuração Atual | Parâmetro Real (imagem) |
-|----------|-------------------|------------------------|
-| Setor | `param_unidade` | `param_setor` |
-| Grupo | `param_grupo` | `param_grupo` ✅ |
-| Situação | `param_situacao` | `param_situacao` ✅ |
-| Conservação | `param_estado` | `param_estado` ✅ |
-| Preço Mínimo | `param_preco_inicial` | `param_preco_inicial` ✅ |
-| Preço Máximo | `param_preco_final` | `param_preco_final` ✅ |
-| Data Início | `param_dataAquisicao_inicio` | `param_dataAquisicao_inicio` ✅ |
-| Data Fim | `param_dataAquisicao_final` | `param_dataAquisicao_final` ✅ |
-
-### 1.2 Colunas CSV (Sem Divergências)
-
-O mapeamento atual está correto:
-
-| Header | Label | Status |
-|--------|-------|--------|
-| TextBox9 | Patrimônio | ✅ |
-| TextBox10 | Descrição | ✅ |
-| TextBox11 | Situação | ✅ |
-| TextBox12 | Conservação | ✅ |
-| TextBox13 | Valor | ✅ |
-| TextBox14 | Grupo | ✅ |
-| TextBox15 | Unidade | ✅ |
+Implementar filtros hierárquicos dinâmicos (Órgão → Unidade → Setor) para o relatório de Auditoria, consumindo dados de um banco de dados externo via API REST do Supabase.
 
 ---
 
-## 2. Inventário
+## Estrutura do Banco Externo
 
-### 2.1 Colunas CSV (Divergência Crítica)
+Baseado na imagem do schema fornecida:
 
-O mapeamento atual usa TextBox9-15, mas o CSV exportado usa TextBox23-29:
-
-| Configuração Atual | Header Real | Label Correto |
-|-------------------|-------------|---------------|
-| TextBox9 → Descrição | TextBox23 | Descrição |
-| TextBox10 → Tipo | TextBox24 | Tipo |
-| TextBox11 → Status | TextBox25 | Status |
-| TextBox12 → Data Início | TextBox26 | Data |
-| TextBox13 → Data Fim | TextBox27 | Data Fim |
-| TextBox14 → Unidade | TextBox28 | Unidade |
-| TextBox15 → Total Itens | TextBox29 | Total Itens |
-
-### 2.2 Parâmetros (Validação Visual)
-
-Baseado na imagem Parametros_Inventario.png:
-
-| Campo UI | Label na Imagem | Parâmetro Configurado |
-|----------|-----------------|----------------------|
-| Tipo de inventário | "Tipo de inventário" | `param_tipo` ✅ |
-| Status | "Status" | `param_status` ✅ |
-| Início do período | "Inicio do período" | `param_periodo_inicio` ✅ |
-| Final do período | "Final do período" | `param_periodo_fim` ✅ |
-| Unidade alvo | "Unidade alvo" | `param_unidade` ✅ |
+| Tabela | Campos | Relacionamento |
+|--------|--------|----------------|
+| `orgaos` | id (uuid), nome (text) | - |
+| `unidades` | id (uuid), nome (text), orgao_id (uuid) | → orgaos.id |
+| `setores` | id (uuid), nome (text), unidade_id (uuid) | → unidades.id |
 
 ---
 
-## Alterações Necessárias
-
-### Arquivo 1: `src/config/reportMapping.ts`
-
-**Linha 17 - Corrigir nome do parâmetro de Bens por Necessidade:**
+## Arquitetura da Solução
 
 ```text
-Antes:
-orgaoUnidade: 'param_unidade',
-
-Depois:
-setor: 'param_setor',
-```
-
-### Arquivo 2: `src/config/columnMapping.ts`
-
-**Linhas 19-27 - Atualizar mapeamento de colunas do Inventário:**
-
-```text
-Antes:
-export const INVENTARIO_COLUMNS: Record<string, string> = {
-  'TextBox9': 'Descrição',
-  'TextBox10': 'Tipo',
-  'TextBox11': 'Status',
-  'TextBox12': 'Data Início',
-  'TextBox13': 'Data Fim',
-  'TextBox14': 'Unidade',
-  'TextBox15': 'Total Itens',
-};
-
-Depois:
-export const INVENTARIO_COLUMNS: Record<string, string> = {
-  'TextBox23': 'Descrição',
-  'TextBox24': 'Tipo',
-  'TextBox25': 'Status',
-  'TextBox26': 'Data',
-  'TextBox27': 'Data Fim',
-  'TextBox28': 'Unidade',
-  'TextBox29': 'Total Itens',
-};
-```
-
-### Arquivo 3: `src/components/reports/filters/BensNecessidadeFilters.tsx`
-
-**Renomear campo `orgaoUnidade` para `setor` em todo o componente:**
-
-Alterações principais:
-- Schema Zod: `orgaoUnidade` → `setor`
-- defaultValues: `orgaoUnidade: []` → `setor: []`
-- handleReset: `orgaoUnidade: []` → `setor: []`
-- getOptionsForParameter: `param_unidade` → `param_setor`
-- getLabelMappingForParameter: `param_unidade` → `param_setor`
-- FormField name: `orgaoUnidade` → `setor`
-- FormLabel: "Órgão/Unidade" → "Setor"
-- Input ID: `filter-orgao-unidade` → `filter-setor`
-
-### Arquivo 4: `src/types/reports.ts`
-
-**Linha 23 - Atualizar interface BensNecessidadeFilters:**
-
-```text
-Antes:
-orgaoUnidade?: string;
-
-Depois:
-setor?: string;
++-------------------+     +----------------------+     +-------------------+
+|   AuditoriaFilters |---->| useCascadingFilters  |---->| Edge Function     |
+|   (React Form)     |     | (Hook)               |     | hierarchy-data    |
++-------------------+     +----------------------+     +-------------------+
+                                                              |
+                                                              v
+                                                       +-------------------+
+                                                       | API Supabase      |
+                                                       | Externo           |
+                                                       | (orgaos,unidades, |
+                                                       |  setores)         |
+                                                       +-------------------+
 ```
 
 ---
 
-## Arquivos a Modificar
+## Arquivos a Criar/Modificar
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/config/reportMapping.ts` | Trocar `orgaoUnidade: 'param_unidade'` por `setor: 'param_setor'` |
-| `src/config/columnMapping.ts` | Corrigir headers TextBox9-15 → TextBox23-29 para Inventário |
-| `src/components/reports/filters/BensNecessidadeFilters.tsx` | Renomear campo `orgaoUnidade` → `setor` |
-| `src/types/reports.ts` | Atualizar interface `BensNecessidadeFilters` |
+### 1. Criar Edge Function: `supabase/functions/hierarchy-data/index.ts`
+
+Função que atua como proxy para o banco externo, realizando consultas nas tabelas `orgaos`, `unidades` e `setores`.
+
+**Funcionalidades:**
+- `get-orgaos`: Retorna todos os órgãos
+- `get-unidades`: Retorna unidades filtradas por `orgao_id` (se fornecido)
+- `get-setores`: Retorna setores filtrados por `unidade_id` (se fornecido)
+
+**Conexão com banco externo:**
+```typescript
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const EXTERNAL_SUPABASE_URL = Deno.env.get('EXTERNAL_SUPABASE_URL')
+const EXTERNAL_SUPABASE_KEY = Deno.env.get('EXTERNAL_SUPABASE_KEY')
+
+const externalClient = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_KEY)
+```
 
 ---
 
-## Resultado Esperado
+### 2. Adicionar Secrets Necessários
 
-1. Relatório de Bens por Necessidade filtra corretamente pelo parâmetro `param_setor`
-2. Relatório de Inventário exibe colunas com headers legíveis (Descrição, Status, Data, Unidade, Total Itens)
-3. Interface do filtro de Bens por Necessidade exibe "Setor" ao invés de "Órgão/Unidade"
-4. Todos os elementos mantêm IDs para automação de testes
+Os seguintes secrets precisam ser configurados:
+
+| Secret | Valor |
+|--------|-------|
+| `EXTERNAL_SUPABASE_URL` | `https://fyzipdzbslanwzbjgrrn.supabase.co` |
+| `EXTERNAL_SUPABASE_KEY` | `sb_publishable_8foRTdonScLDIW37MEcIHg_Arav34aP` |
+
+---
+
+### 3. Criar Hook: `src/hooks/useCascadingFilters.ts`
+
+Hook React para gerenciar o carregamento hierárquico dos filtros.
+
+**Responsabilidades:**
+- Carregar órgãos ao inicializar
+- Carregar unidades quando órgão(s) forem selecionados
+- Carregar setores quando unidade(s) forem selecionadas
+- Gerenciar estados de loading e error para cada nível
+- Resetar filtros dependentes quando o pai muda
+
+**Interface do Hook:**
+```typescript
+interface CascadingFiltersResult {
+  // Opções disponíveis
+  orgaos: MultiSelectOption[];
+  unidades: MultiSelectOption[];
+  setores: MultiSelectOption[];
+  
+  // Estados de loading
+  loadingOrgaos: boolean;
+  loadingUnidades: boolean;
+  loadingSetores: boolean;
+  
+  // Funções para buscar dados filtrados
+  fetchUnidadesByOrgaos: (orgaoIds: string[]) => Promise<void>;
+  fetchSetoresByUnidades: (unidadeIds: string[]) => Promise<void>;
+  
+  // Estados de disponibilidade
+  unidadesDisabled: boolean;
+  setoresDisabled: boolean;
+}
+```
+
+---
+
+### 4. Modificar: `src/components/reports/filters/AuditoriaFilters.tsx`
+
+**Alterações principais:**
+- Substituir `useReportParameters` pelo novo `useCascadingFilters`
+- Adicionar `useEffect` para reagir às mudanças de seleção
+- Desabilitar campos Unidade/Setor até que o pai seja selecionado
+- Resetar valores filhos quando o pai muda
+
+**Comportamento esperado:**
+1. Ao abrir: Órgão carrega automaticamente, Unidade e Setor ficam desabilitados
+2. Ao selecionar Órgão(s): Unidade é habilitado e carrega opções filtradas
+3. Ao selecionar Unidade(s): Setor é habilitado e carrega opções filtradas
+4. Ao limpar Órgão: Unidade e Setor são resetados e desabilitados
+
+---
+
+### 5. Atualizar `supabase/config.toml`
+
+Adicionar configuração para a nova Edge Function:
+
+```toml
+[functions.hierarchy-data]
+verify_jwt = false
+```
+
+---
+
+## Fluxo de Dados Detalhado
+
+```text
+1. Usuário abre aba Auditoria
+   ↓
+2. Hook carrega órgãos: GET /hierarchy-data { action: 'get-orgaos' }
+   ↓
+3. Usuário seleciona "Órgão A" (id: abc-123)
+   ↓
+4. Hook carrega unidades: GET /hierarchy-data { action: 'get-unidades', orgaoIds: ['abc-123'] }
+   ↓
+5. Usuário seleciona "Unidade X" (id: xyz-456)
+   ↓
+6. Hook carrega setores: GET /hierarchy-data { action: 'get-setores', unidadeIds: ['xyz-456'] }
+   ↓
+7. Usuário seleciona setor(es) e clica "Gerar"
+   ↓
+8. Formulário envia: { orgao: [...], unidade: [...], setor: [...], periodoInicio, periodoFim }
+```
+
+---
+
+## Considerações de UX
+
+| Estado | Comportamento Visual |
+|--------|---------------------|
+| Órgão não selecionado | Unidade e Setor aparecem desabilitados (opacidade reduzida) |
+| Carregando Unidades | Skeleton no lugar do MultiSelect |
+| Órgão selecionado, nenhuma Unidade disponível | Mensagem "Nenhuma unidade encontrada" |
+| Limpando Órgão | Unidade e Setor são resetados para [] |
+
+---
+
+## Resumo das Alterações
+
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `supabase/functions/hierarchy-data/index.ts` | Criar | Edge Function para consultar banco externo |
+| `supabase/config.toml` | Modificar | Adicionar configuração da nova function |
+| `src/hooks/useCascadingFilters.ts` | Criar | Hook para gerenciar filtros em cascata |
+| `src/components/reports/filters/AuditoriaFilters.tsx` | Modificar | Usar novo hook e implementar lógica cascata |
+| Secrets | Adicionar | `EXTERNAL_SUPABASE_URL` e `EXTERNAL_SUPABASE_KEY` |
+
+---
+
+## Validações e Testes
+
+Após implementação, testar:
+1. Órgãos carregam ao abrir a aba Auditoria
+2. Selecionar órgão habilita e carrega unidades corretas
+3. Selecionar unidade habilita e carrega setores corretos
+4. Limpar órgão reseta unidade e setor
+5. Multi-seleção funciona corretamente em todos os níveis
+6. Gerar relatório com filtros aplicados funciona
+
