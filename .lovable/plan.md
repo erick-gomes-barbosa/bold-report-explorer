@@ -1,168 +1,159 @@
 
-# Plano: Corrigir Divergencias de Parametros e Mapeamentos
+# Plano: Corrigir Divergências em Bens por Necessidade e Inventário
 
-## Problemas Identificados
+## Resumo das Divergências Identificadas
 
-Apos realizar requisicoes a API Bold Reports, identifiquei as seguintes divergencias:
+Após analisar os arquivos CSV e as imagens de parâmetros fornecidas, identifiquei as seguintes divergências:
 
-### 1. Relatorio de Auditoria - Mapeamento de Parametros Incorreto
+---
 
-A configuracao atual em `reportMapping.ts` usa nomes de parametros errados:
+## 1. Bens por Necessidade
 
-| Campo | Configuracao Atual | Parametro Real da API |
-|-------|-------------------|----------------------|
-| orgao | `Orgao` | `param_orgao` |
-| unidade | `Unidade` | `param_unidade` |
-| setor | `Setor` | `param_setor` |
-| periodoInicio | `DataInicio` | `param_periodo_inicio` |
-| periodoFim | `DataFim` | `param_periodo_final` |
+### 1.1 Parâmetros (Divergência Encontrada)
 
-### 2. Relatorio de Auditoria - Colunas CSV Nao Mapeadas
+O primeiro parâmetro está incorreto:
 
-O CSV exportado retorna headers genericos (`TextBox27-31`) que precisam ser mapeados:
+| Campo UI | Configuração Atual | Parâmetro Real (imagem) |
+|----------|-------------------|------------------------|
+| Setor | `param_unidade` | `param_setor` |
+| Grupo | `param_grupo` | `param_grupo` ✅ |
+| Situação | `param_situacao` | `param_situacao` ✅ |
+| Conservação | `param_estado` | `param_estado` ✅ |
+| Preço Mínimo | `param_preco_inicial` | `param_preco_inicial` ✅ |
+| Preço Máximo | `param_preco_final` | `param_preco_final` ✅ |
+| Data Início | `param_dataAquisicao_inicio` | `param_dataAquisicao_inicio` ✅ |
+| Data Fim | `param_dataAquisicao_final` | `param_dataAquisicao_final` ✅ |
 
-| Header CSV | Nome Amigavel |
-|------------|---------------|
-| TextBox27 | Orgao |
-| TextBox28 | Unidade |
-| TextBox29 | Setor |
-| TextBox30 | Data Inicio |
-| TextBox31 | Data Fim |
+### 1.2 Colunas CSV (Sem Divergências)
 
-### 3. Relatorio de Auditoria - Filtros Estaticos ao Inves de Dinamicos
+O mapeamento atual está correto:
 
-O componente `AuditoriaFilters.tsx` usa dados mockados estaticos, mas a API retorna parametros dinamicos com `AvailableValues` para:
-- `param_orgao` (MultiValue - 4 opcoes)
-- `param_unidade` (MultiValue - 6 opcoes)
-- `param_setor` (MultiValue - 11 opcoes)
-- `param_periodo_inicio` (DateTime)
-- `param_periodo_final` (DateTime)
+| Header | Label | Status |
+|--------|-------|--------|
+| TextBox9 | Patrimônio | ✅ |
+| TextBox10 | Descrição | ✅ |
+| TextBox11 | Situação | ✅ |
+| TextBox12 | Conservação | ✅ |
+| TextBox13 | Valor | ✅ |
+| TextBox14 | Grupo | ✅ |
+| TextBox15 | Unidade | ✅ |
 
-## Alteracoes Necessarias
+---
+
+## 2. Inventário
+
+### 2.1 Colunas CSV (Divergência Crítica)
+
+O mapeamento atual usa TextBox9-15, mas o CSV exportado usa TextBox23-29:
+
+| Configuração Atual | Header Real | Label Correto |
+|-------------------|-------------|---------------|
+| TextBox9 → Descrição | TextBox23 | Descrição |
+| TextBox10 → Tipo | TextBox24 | Tipo |
+| TextBox11 → Status | TextBox25 | Status |
+| TextBox12 → Data Início | TextBox26 | Data |
+| TextBox13 → Data Fim | TextBox27 | Data Fim |
+| TextBox14 → Unidade | TextBox28 | Unidade |
+| TextBox15 → Total Itens | TextBox29 | Total Itens |
+
+### 2.2 Parâmetros (Validação Visual)
+
+Baseado na imagem Parametros_Inventario.png:
+
+| Campo UI | Label na Imagem | Parâmetro Configurado |
+|----------|-----------------|----------------------|
+| Tipo de inventário | "Tipo de inventário" | `param_tipo` ✅ |
+| Status | "Status" | `param_status` ✅ |
+| Início do período | "Inicio do período" | `param_periodo_inicio` ✅ |
+| Final do período | "Final do período" | `param_periodo_fim` ✅ |
+| Unidade alvo | "Unidade alvo" | `param_unidade` ✅ |
+
+---
+
+## Alterações Necessárias
 
 ### Arquivo 1: `src/config/reportMapping.ts`
 
-**Linhas 38-47 - Corrigir mapeamento de parametros da Auditoria:**
+**Linha 17 - Corrigir nome do parâmetro de Bens por Necessidade:**
 
 ```text
 Antes:
-'auditoria': {
-  reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207',
-  parameterMapping: {
-    orgao: 'Orgao',
-    unidade: 'Unidade',
-    setor: 'Setor',
-    periodoInicio: 'DataInicio',
-    periodoFim: 'DataFim',
-  }
-},
+orgaoUnidade: 'param_unidade',
 
 Depois:
-'auditoria': {
-  reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207',
-  parameterMapping: {
-    orgao: 'param_orgao',
-    unidade: 'param_unidade',
-    setor: 'param_setor',
-    periodoInicio: 'param_periodo_inicio',
-    periodoFim: 'param_periodo_final',
-  }
-},
+setor: 'param_setor',
 ```
 
 ### Arquivo 2: `src/config/columnMapping.ts`
 
-**Linhas 32-35 - Preencher mapeamento de colunas da Auditoria:**
+**Linhas 19-27 - Atualizar mapeamento de colunas do Inventário:**
 
 ```text
 Antes:
-export const AUDITORIA_COLUMNS: Record<string, string> = {
-  // Será preenchido conforme a estrutura real do relatório
+export const INVENTARIO_COLUMNS: Record<string, string> = {
+  'TextBox9': 'Descrição',
+  'TextBox10': 'Tipo',
+  'TextBox11': 'Status',
+  'TextBox12': 'Data Início',
+  'TextBox13': 'Data Fim',
+  'TextBox14': 'Unidade',
+  'TextBox15': 'Total Itens',
 };
 
 Depois:
-export const AUDITORIA_COLUMNS: Record<string, string> = {
-  'TextBox27': 'Órgão',
+export const INVENTARIO_COLUMNS: Record<string, string> = {
+  'TextBox23': 'Descrição',
+  'TextBox24': 'Tipo',
+  'TextBox25': 'Status',
+  'TextBox26': 'Data',
+  'TextBox27': 'Data Fim',
   'TextBox28': 'Unidade',
-  'TextBox29': 'Setor',
-  'TextBox30': 'Data Início',
-  'TextBox31': 'Data Fim',
+  'TextBox29': 'Total Itens',
 };
 ```
 
-### Arquivo 3: `src/components/reports/filters/AuditoriaFilters.tsx`
+### Arquivo 3: `src/components/reports/filters/BensNecessidadeFilters.tsx`
 
-**Refatoracao completa para usar filtros dinamicos:**
+**Renomear campo `orgaoUnidade` para `setor` em todo o componente:**
 
-Principais mudancas:
-1. Importar `useReportParameters`, `MultiSelect`, `Skeleton`
-2. Remover dados mockados estaticos (`orgaos`)
-3. Atualizar schema Zod para arrays (multi-select)
-4. Adicionar hook `useReportParameters` para carregar opcoes da API
-5. Converter campos para `MultiSelect` (Orgao, Unidade, Setor)
-6. Adicionar `_labelMappings` no submit
-7. Adicionar IDs para testes automatizados
-8. Manter campos de periodo como opcionais
-
-**Novo Schema Zod:**
-```text
-orgao: z.array(z.string()).default([]),
-unidade: z.array(z.string()).default([]),
-setor: z.array(z.string()).default([]),
-periodoInicio: z.date().optional(),
-periodoFim: z.date().optional(),
-```
-
-**IDs para Testes:**
-| Elemento | ID |
-|----------|-----|
-| Formulario | `form-auditoria` |
-| Campo Orgao | `filter-orgao` |
-| Campo Unidade | `filter-unidade` |
-| Campo Setor | `filter-setor` |
-| Campo Periodo Inicio | `filter-periodo-inicio` |
-| Campo Periodo Fim | `filter-periodo-fim` |
-| Botao Limpar | `btn-filter-reset-auditoria` |
-| Botao Gerar | `btn-filter-submit-auditoria` |
+Alterações principais:
+- Schema Zod: `orgaoUnidade` → `setor`
+- defaultValues: `orgaoUnidade: []` → `setor: []`
+- handleReset: `orgaoUnidade: []` → `setor: []`
+- getOptionsForParameter: `param_unidade` → `param_setor`
+- getLabelMappingForParameter: `param_unidade` → `param_setor`
+- FormField name: `orgaoUnidade` → `setor`
+- FormLabel: "Órgão/Unidade" → "Setor"
+- Input ID: `filter-orgao-unidade` → `filter-setor`
 
 ### Arquivo 4: `src/types/reports.ts`
 
-**Linhas 40-46 - Atualizar tipo AuditoriaFilters para arrays:**
+**Linha 23 - Atualizar interface BensNecessidadeFilters:**
 
 ```text
 Antes:
-export interface AuditoriaFilters {
-  orgao?: string;
-  unidade?: string;
-  setor?: string;
-  periodoInicio?: Date;
-  periodoFim?: Date;
-}
+orgaoUnidade?: string;
 
 Depois:
-export interface AuditoriaFilters {
-  orgao: string[];
-  unidade: string[];
-  setor: string[];
-  periodoInicio?: Date;
-  periodoFim?: Date;
-}
+setor?: string;
 ```
+
+---
 
 ## Arquivos a Modificar
 
-| Arquivo | Alteracao |
+| Arquivo | Alteração |
 |---------|-----------|
-| `src/config/reportMapping.ts` | Corrigir prefixo dos parametros de Auditoria |
-| `src/config/columnMapping.ts` | Preencher AUDITORIA_COLUMNS com TextBox27-31 |
-| `src/components/reports/filters/AuditoriaFilters.tsx` | Refatorar para filtros dinamicos com MultiSelect |
-| `src/types/reports.ts` | Atualizar interface AuditoriaFilters |
+| `src/config/reportMapping.ts` | Trocar `orgaoUnidade: 'param_unidade'` por `setor: 'param_setor'` |
+| `src/config/columnMapping.ts` | Corrigir headers TextBox9-15 → TextBox23-29 para Inventário |
+| `src/components/reports/filters/BensNecessidadeFilters.tsx` | Renomear campo `orgaoUnidade` → `setor` |
+| `src/types/reports.ts` | Atualizar interface `BensNecessidadeFilters` |
+
+---
 
 ## Resultado Esperado
 
-1. Ao clicar na aba "Auditoria", os filtros carregam opcoes dinamicas da API
-2. Campos Orgao, Unidade e Setor permitem multi-selecao
-3. Ao clicar em "Gerar", a tabela exibe dados com headers legiveis (Orgao, Unidade, etc.)
-4. Ao clicar em "Exportar", o arquivo e gerado com filtros aplicados corretamente
-5. Todos os elementos possuem IDs para automacao de testes
-6. Comportamento consistente com Bens por Necessidade e Inventario
+1. Relatório de Bens por Necessidade filtra corretamente pelo parâmetro `param_setor`
+2. Relatório de Inventário exibe colunas com headers legíveis (Descrição, Status, Data, Unidade, Total Itens)
+3. Interface do filtro de Bens por Necessidade exibe "Setor" ao invés de "Órgão/Unidade"
+4. Todos os elementos mantêm IDs para automação de testes
