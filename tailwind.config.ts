@@ -70,9 +70,9 @@ export default {
           clay: "hsl(var(--earth-clay))",
           stone: "hsl(var(--earth-stone))",
         },
-        blue: {
-          accent: "hsl(var(--blue-accent))",
-          light: "hsl(var(--blue-light))",
+        green: {
+          accent: "hsl(var(--green-accent))",
+          light: "hsl(var(--green-light))",
         },
       },
       borderRadius: {
