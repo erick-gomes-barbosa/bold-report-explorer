@@ -224,7 +224,20 @@ async function getBoldUserPermissions(token: string, userId: number): Promise<{ 
     
     console.log('[user-management] Permissions response status:', response.status);
     
-    const data = await response.json();
+    // Handle 204 No Content - user has no permissions
+    if (response.status === 204) {
+      console.log('[user-management] User has no permissions (204 No Content)');
+      return { success: true, permissions: [] };
+    }
+    
+    // Check if response has content before parsing JSON
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      console.log('[user-management] Empty response body, returning empty permissions');
+      return { success: true, permissions: [] };
+    }
+    
+    const data = JSON.parse(text);
     console.log('[user-management] Permissions response data:', JSON.stringify(data).substring(0, 500));
     
     if (!response.ok) {
