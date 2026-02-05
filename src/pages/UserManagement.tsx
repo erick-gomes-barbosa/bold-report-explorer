@@ -281,6 +281,7 @@ export default function UserManagement() {
         open={isPermissionsDialogOpen}
         onOpenChange={setIsPermissionsDialogOpen}
         user={selectedUser}
+        onRefresh={handleSuccess}
       />
     </div>
   );
