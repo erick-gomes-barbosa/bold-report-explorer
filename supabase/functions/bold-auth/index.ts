@@ -96,6 +96,7 @@ async function findUserByEmail(systemToken: string, email: string): Promise<User
   // Try to get all users and filter by email
   const usersUrl = `${BASE_URL}/v1.0/users`;
   console.log('[BoldAuth] Searching for user:', email);
+  console.log('[BoldAuth] Users URL:', usersUrl);
   
   const response = await fetch(usersUrl, {
     method: 'GET',
@@ -107,11 +108,37 @@ async function findUserByEmail(systemToken: string, email: string): Promise<User
   
   if (!response.ok) {
     console.error('[BoldAuth] Failed to fetch users:', response.status);
+    const errorText = await response.text();
+    console.error('[BoldAuth] Users error response:', errorText.substring(0, 300));
     return null;
   }
   
   const data = await response.json();
-  const users = data.value || data.Users || data || [];
+  console.log('[BoldAuth] Users response type:', typeof data);
+  console.log('[BoldAuth] Users response keys:', Object.keys(data || {}));
+  
+  // Handle different response formats from Bold Reports API
+  let users: UserResponse[] = [];
+  
+  if (Array.isArray(data)) {
+    users = data;
+  } else if (data && typeof data === 'object') {
+    // Try common response wrapper properties
+    users = data.value || data.Users || data.items || data.Result || [];
+    
+    // If still not an array, check if it's a single user object
+    if (!Array.isArray(users)) {
+      console.log('[BoldAuth] Response is not an array, checking if single user');
+      if (data.Email || data.Id) {
+        users = [data as UserResponse];
+      } else {
+        console.error('[BoldAuth] Unexpected response format:', JSON.stringify(data).substring(0, 500));
+        users = [];
+      }
+    }
+  }
+  
+  console.log('[BoldAuth] Found', users.length, 'users total');
   
   // Find user by email (case-insensitive)
   const user = users.find((u: UserResponse) => 
