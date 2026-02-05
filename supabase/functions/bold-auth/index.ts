@@ -124,7 +124,7 @@ async function findUserByEmail(systemToken: string, email: string): Promise<User
     users = data;
   } else if (data && typeof data === 'object') {
     // Try common response wrapper properties
-    users = data.value || data.Users || data.items || data.Result || [];
+    users = data.UserList || data.value || data.Users || data.items || data.Result || [];
     
     // If still not an array, check if it's a single user object
     if (!Array.isArray(users)) {
