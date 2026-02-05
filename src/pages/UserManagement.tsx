@@ -49,31 +49,44 @@ export default function UserManagement() {
   }, [authLoading, boldReportsInfo.isAdmin, navigate]);
 
   // Fetch users
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Fetch users with retry logic
+  const fetchUsers = useCallback(async (retries = 3) => {
+    setLoading(true);
+    setError(null);
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`[UserManagement] Fetching users, attempt ${attempt}/${retries}`);
+        
+        const { data, error: fnError } = await supabase.functions.invoke('bold-users', {
+          method: 'POST',
+        });
 
-      const { data, error: fnError } = await supabase.functions.invoke('bold-users', {
-        method: 'POST',
-      });
+        if (fnError) {
+          throw new Error(fnError.message);
+        }
 
-      if (fnError) {
-        throw new Error(fnError.message);
+        if (!data.success) {
+          throw new Error(data.error || 'Erro ao buscar usuários');
+        }
+
+        setUsers(data.users || []);
+        setSelectedUser(null);
+        setLoading(false);
+        return; // Success
+      } catch (err) {
+        console.error(`[UserManagement] Error fetching users (attempt ${attempt}):`, err);
+        
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        
+        setError(err instanceof Error ? err.message : 'Erro ao buscar usuários');
       }
-
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao buscar usuários');
-      }
-
-      setUsers(data.users || []);
-      setSelectedUser(null);
-    } catch (err) {
-      console.error('Error fetching users:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao buscar usuários');
-    } finally {
-      setLoading(false);
     }
+    
+    setLoading(false);
   }, []);
 
   useEffect(() => {
