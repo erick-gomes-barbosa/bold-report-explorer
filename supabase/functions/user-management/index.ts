@@ -38,36 +38,53 @@ interface DeleteUserPayload {
 
 type RequestPayload = CreateUserPayload | UpdateUserPayload | DeleteUserPayload;
 
-// Generate Bold Reports auth token
+// Generate HMACSHA256 signature for Embed Secret authentication
+async function generateEmbedSignature(message: string, secretKey: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secretKey);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const bytes = new Uint8Array(signature);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Get Bold Reports auth token using Embed Secret
 async function getBoldAuthToken(): Promise<string | null> {
   try {
+    if (!BOLD_EMBED_SECRET || !BOLD_EMAIL || !BOLD_SITE_ID) {
+      console.error('[user-management] Missing Bold Reports configuration');
+      return null;
+    }
+    
     const nonce = crypto.randomUUID();
-    const timestamp = Date.now();
-    const message = `${BOLD_EMAIL}${nonce}${timestamp}`;
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const embedMessage = `embed_nonce=${nonce}&user_email=${BOLD_EMAIL}&timestamp=${timestamp}`.toLowerCase();
     
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(BOLD_EMBED_SECRET);
-    const messageData = encoder.encode(message);
+    const signature = await generateEmbedSignature(embedMessage, BOLD_EMBED_SECRET);
     
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-    const signatureBase64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
-    
-    const tokenUrl = `https://${BOLD_SITE_ID}.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/token`;
+    const tokenUrl = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/token`;
     
     const formData = new URLSearchParams();
     formData.append('grant_type', 'embed_secret');
     formData.append('username', BOLD_EMAIL);
     formData.append('embed_nonce', nonce);
-    formData.append('embed_signature', signatureBase64);
-    formData.append('timestamp', timestamp.toString());
+    formData.append('embed_signature', signature);
+    formData.append('timestamp', timestamp);
+    
+    console.log('[user-management] Getting token from:', tokenUrl);
     
     const response = await fetch(tokenUrl, {
       method: 'POST',
@@ -77,10 +94,13 @@ async function getBoldAuthToken(): Promise<string | null> {
     
     if (!response.ok) {
       console.error('[user-management] Token request failed:', response.status);
+      const text = await response.text();
+      console.error('[user-management] Token error response:', text);
       return null;
     }
     
     const tokenData = await response.json();
+    console.log('[user-management] Token obtained successfully');
     return tokenData.access_token || null;
   } catch (error) {
     console.error('[user-management] Error getting Bold token:', error);
@@ -91,7 +111,9 @@ async function getBoldAuthToken(): Promise<string | null> {
 // Create user in Bold Reports
 async function createBoldUser(token: string, email: string, firstName: string, lastName: string, password: string): Promise<{ success: boolean; error?: string; userId?: number }> {
   try {
-    const url = `https://${BOLD_SITE_ID}.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/users`;
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/users`;
+    
+    console.log('[user-management] Creating Bold user at:', url);
     
     const response = await fetch(url, {
       method: 'POST',
@@ -124,7 +146,7 @@ async function createBoldUser(token: string, email: string, firstName: string, l
 // Update user in Bold Reports
 async function updateBoldUser(token: string, email: string, firstName: string, lastName: string, contactNumber?: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const url = `https://${BOLD_SITE_ID}.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/users/${encodeURIComponent(email)}`;
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/users/${encodeURIComponent(email)}`;
     
     const body: Record<string, string> = {
       FirstName: firstName,
@@ -161,7 +183,7 @@ async function updateBoldUser(token: string, email: string, firstName: string, l
 // Delete user from Bold Reports
 async function deleteBoldUser(token: string, email: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const url = `https://${BOLD_SITE_ID}.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/users/${encodeURIComponent(email)}`;
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/users/${encodeURIComponent(email)}`;
     
     const response = await fetch(url, {
       method: 'DELETE',
@@ -188,7 +210,9 @@ async function deleteBoldUser(token: string, email: string): Promise<{ success: 
 // Get user permissions from Bold Reports
 async function getBoldUserPermissions(token: string, userId: number): Promise<{ success: boolean; permissions?: unknown[]; error?: string }> {
   try {
-    const url = `https://${BOLD_SITE_ID}.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/permissions/users/${userId}`;
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/permissions/users/${userId}`;
+    
+    console.log('[user-management] Fetching permissions from:', url);
     
     const response = await fetch(url, {
       method: 'GET',
@@ -198,13 +222,14 @@ async function getBoldUserPermissions(token: string, userId: number): Promise<{ 
       },
     });
     
-    if (!response.ok) {
-      const data = await response.json();
-      return { success: false, error: data.Message || 'Erro ao buscar permissões' };
-    }
+    console.log('[user-management] Permissions response status:', response.status);
     
     const data = await response.json();
-    console.log('[user-management] Bold Reports permissions response:', data);
+    console.log('[user-management] Permissions response data:', JSON.stringify(data).substring(0, 500));
+    
+    if (!response.ok) {
+      return { success: false, error: data.Message || data.ApiStatus?.StatusMessage || 'Erro ao buscar permissões' };
+    }
     
     // The API returns different structures, handle both
     const permissions = data.Result || data.PermissionList || data || [];
