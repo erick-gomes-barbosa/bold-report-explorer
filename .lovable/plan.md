@@ -1,163 +1,145 @@
 
-# Plano: Pagina de Gerencia de Usuarios para Administradores Bold Reports
 
-## Resumo
+# Plano: Corrigir Reconhecimento de Administrador Bold Reports
 
-Transformar o botao de configuracoes sem funcao em um botao de acesso a uma nova pagina de gerenciamento de usuarios, visivel apenas para administradores Bold Reports. A pagina exibira uma tabela com os usuarios e suas permissoes.
+## Problema Identificado
 
-## Arquitetura da Solucao
-
-```text
-+------------------+       +--------------------+       +--------------------+
-|  ReportsHeader   | ----> | /usuarios          | <---- | bold-users         |
-|  (Botao Admin)   |       | (Nova Pagina)      |       | (Nova Edge Func)   |
-+------------------+       +--------------------+       +--------------------+
-        |                          |                           |
-        v                          v                           v
-   Visivel apenas           Tabela com                   Busca usuarios
-   se isAdmin=true          usuarios e grupos            do Bold Reports
+A edge function `bold-auth` **funciona corretamente** e retorna:
+```json
+{
+  "isAdmin": true,
+  "groups": ["System Administrator"],
+  "synced": true
+}
 ```
 
-## Arquivos a Criar
+Porém, o estado `isAdmin` nunca chega ao componente `ReportsHeader` devido a dois problemas no fluxo de autenticacao.
 
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/pages/UserManagement.tsx` | Pagina principal de gerencia de usuarios |
-| `supabase/functions/bold-users/index.ts` | Edge function para listar usuarios do Bold Reports |
+## Diagrama do Fluxo Atual (Com Problemas)
+
+```text
+Login                              AuthContext                         ReportsHeader
+  |                                     |                                    |
+  |-- signIn() ----------------------->|                                    |
+  |<-- success ------------------------|                                    |
+  |                                     |                                    |
+  |-- syncWithBoldReports() (async) -->|                                    |
+  |-- navigate('/') -------------------|-----> isAdmin = false ------------>|  PROBLEMA!
+  |                                     |                                    |
+  |                                     |<-- bold-auth response              |
+  |                                     |    isAdmin = true                  |
+  |                                     |    (tarde demais!)                 |
+```
+
+## Problema 1: Login Nao Aguarda Sincronizacao
+
+**Arquivo:** `src/pages/Login.tsx` (linhas 54-63)
+
+```javascript
+// ATUAL - nao espera a sincronizacao terminar
+syncWithBoldReports(data.email).catch((err) => {
+  console.warn('[Login] Bold Reports sync failed (non-blocking):', err);
+});
+
+// Navega IMEDIATAMENTE, antes do isAdmin ser atualizado
+navigate('/');
+```
+
+O navegador redireciona antes da sincronizacao completar.
+
+## Problema 2: Sessao Existente Nao Sincroniza
+
+**Arquivo:** `src/contexts/AuthContext.tsx` (linhas 82-92)
+
+Quando o usuario ja tem uma sessao ativa (refresh da pagina), o codigo busca profile e role, mas **nunca chama** `syncWithBoldReports`:
+
+```javascript
+// Quando existe sessao, apenas busca profile - NAO sincroniza Bold Reports
+if (existingSession?.user) {
+  fetchUserData(existingSession.user.id);
+  // FALTA: syncWithBoldReports(existingSession.user.email!)
+}
+```
+
+## Solucao
+
+### 1. Login.tsx - Aguardar Sincronizacao
+
+**Antes:**
+```javascript
+syncWithBoldReports(data.email).catch((err) => {
+  console.warn('[Login] Bold Reports sync failed (non-blocking):', err);
+});
+
+navigate('/');
+```
+
+**Depois:**
+```javascript
+// Aguarda sincronizacao antes de navegar
+await syncWithBoldReports(data.email);
+
+navigate('/');
+```
+
+A sincronizacao ja possui try/catch interno, entao erros nao bloqueiam a navegacao.
+
+### 2. AuthContext.tsx - Sincronizar em Sessao Existente
+
+**Alterar** a funcao `onAuthStateChange` (linhas 63-80) e `getSession` (linhas 82-92) para chamar `syncWithBoldReports` quando houver usuario autenticado.
+
+**Antes:**
+```javascript
+if (currentSession?.user) {
+  setTimeout(() => {
+    fetchUserData(currentSession.user.id);
+  }, 0);
+}
+```
+
+**Depois:**
+```javascript
+if (currentSession?.user) {
+  setTimeout(() => {
+    fetchUserData(currentSession.user.id);
+    syncWithBoldReportsInternal(currentSession.user.email!);
+  }, 0);
+}
+```
+
+Onde `syncWithBoldReportsInternal` e uma funcao interna que nao precisa ser exposta via contexto.
+
+## Diagrama do Fluxo Corrigido
+
+```text
+Login                              AuthContext                         ReportsHeader
+  |                                     |                                    |
+  |-- signIn() ----------------------->|                                    |
+  |<-- success ------------------------|                                    |
+  |                                     |                                    |
+  |-- await syncWithBoldReports() ---->|                                    |
+  |                    ...aguarda...    |                                    |
+  |<-- complete (isAdmin=true) --------|                                    |
+  |                                     |                                    |
+  |-- navigate('/') -------------------|-----> isAdmin = true ------------->|  CORRETO!
+
+Refresh de Pagina
+  |                                     |                                    |
+  |                   getSession() ---->|                                    |
+  |               syncWithBoldReports ->|                                    |
+  |                                     |-----> isAdmin = true ------------->|  CORRETO!
+```
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/reports/ReportsHeader.tsx` | Transformar botao em link condicional para admins |
-| `src/App.tsx` | Adicionar nova rota protegida `/usuarios` |
+| `src/pages/Login.tsx` | Adicionar `await` antes de `syncWithBoldReports` |
+| `src/contexts/AuthContext.tsx` | Chamar sincronizacao em sessao existente e em `onAuthStateChange` |
 
-## Detalhamento das Alteracoes
+## Resultado Esperado
 
-### 1. ReportsHeader.tsx - Botao de Gerencia de Usuarios
+1. Apos login, o usuario sera redirecionado **apenas depois** que `isAdmin` for atualizado
+2. Em refresh de pagina, a sincronizacao ocorre automaticamente
+3. O botao de gerenciamento de usuarios aparecera corretamente para administradores
 
-**Antes (linhas 57-60):**
-```jsx
-<div className="flex items-center gap-2">
-  <Button variant="ghost" size="icon" className="...">
-    <Settings className="h-5 w-5" />
-  </Button>
-```
-
-**Depois:**
-```jsx
-<div className="flex items-center gap-2">
-  {boldReportsInfo.isAdmin && (
-    <Button 
-      variant="ghost" 
-      size="icon" 
-      className="text-primary-foreground hover:bg-primary-foreground/10"
-      onClick={() => navigate('/usuarios')}
-      title="Gerenciar Usuários"
-    >
-      <Users className="h-5 w-5" />
-    </Button>
-  )}
-```
-
-- Icone alterado de `Settings` para `Users` (lucide-react)
-- Botao visivel apenas quando `boldReportsInfo.isAdmin === true`
-- Adiciona navegacao para `/usuarios`
-- Tooltip explicativo
-
-### 2. App.tsx - Nova Rota Protegida
-
-Adicionar rota para a pagina de gerencia dentro do grupo de rotas protegidas:
-
-```jsx
-<Route element={<ProtectedRoute />}>
-  <Route path="/" element={<Reports />} />
-  <Route path="/bold-reports" element={<Index />} />
-  <Route path="/usuarios" element={<UserManagement />} />
-</Route>
-```
-
-### 3. UserManagement.tsx - Nova Pagina
-
-Estrutura da pagina:
-
-```text
-+----------------------------------------------------+
-|  ReportsHeader (title="Gerencia de Usuarios")      |
-+----------------------------------------------------+
-|                                                    |
-|  +----------------------------------------------+  |
-|  |  Card: Tabela de Usuarios                    |  |
-|  |  +------------------------------------------+|  |
-|  |  | Avatar | Nome | Email | Grupos | Status  ||  |
-|  |  +------------------------------------------+|  |
-|  |  | ...    | ...  | ...   | ...    | ...     ||  |
-|  |  +------------------------------------------+|  |
-|  +----------------------------------------------+  |
-|                                                    |
-+----------------------------------------------------+
-```
-
-**Funcionalidades:**
-- Listagem de todos os usuarios do Bold Reports
-- Exibicao de: Avatar, Nome Completo, Email, Grupos, Status (Ativo/Inativo)
-- Badge visual para indicar administradores
-- Loading skeleton durante carregamento
-- Estado de erro com mensagem
-
-### 4. Edge Function bold-users
-
-Nova edge function para listar usuarios do Bold Reports:
-
-**Endpoint:** `POST /bold-users`
-
-**Resposta:**
-```json
-{
-  "success": true,
-  "users": [
-    {
-      "id": 16958,
-      "email": "user@example.com",
-      "displayName": "Usuario Exemplo",
-      "firstName": "Usuario",
-      "lastName": "Exemplo",
-      "isActive": true,
-      "groups": ["System Administrator"]
-    }
-  ]
-}
-```
-
-A funcao reutiliza a logica de autenticacao existente em `bold-auth`:
-- Obtem token do sistema via Embed Secret
-- Lista todos os usuarios
-- Para cada usuario, busca seus grupos
-- Retorna lista completa com grupos
-
-## Interface Visual da Tabela
-
-| Coluna | Descricao | Formatacao |
-|--------|-----------|------------|
-| Usuario | Avatar + Nome | Avatar com iniciais, nome em negrito |
-| Email | Endereco de email | Texto simples |
-| Grupos | Lista de grupos | Badges separados |
-| Status | Ativo/Inativo | Badge verde ou cinza |
-| Admin | Indicador | Badge "Admin" se for administrador |
-
-## Seguranca
-
-1. **Frontend**: Botao so aparece se `boldReportsInfo.isAdmin === true`
-2. **Backend**: A Edge function usa autenticacao do sistema Bold Reports
-3. **Rota**: Protegida pelo `ProtectedRoute` (requer login)
-
-A verificacao de admin eh feita no frontend baseada no retorno da API Bold Reports.
-Se um usuario nao-admin tentar acessar `/usuarios` diretamente, a pagina ainda
-carregara, mas ele nao tera chegado la pelo botao (que estara invisivel).
-Uma verificacao adicional pode ser adicionada na pagina para redirecionar nao-admins.
-
-## Proximos Passos (Fora deste Escopo)
-
-- Edicao de permissoes de usuarios
-- Adicao/remocao de usuarios de grupos
-- Sincronizacao bidirecional com Bold Reports
