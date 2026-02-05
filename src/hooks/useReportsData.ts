@@ -25,6 +25,7 @@ export function useReportsData() {
   const [data, setData] = useState<ReportDataItem[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasNoResults, setHasNoResults] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -148,7 +149,7 @@ export function useReportsData() {
     format: ExportFormat,
     filters: unknown
   ): Promise<boolean> => {
-    setLoading(true);
+    setExporting(true);
     
     try {
       const reportId = getReportId(reportType);
@@ -213,7 +214,7 @@ export function useReportsData() {
       setError(message);
       return false;
     } finally {
-      setLoading(false);
+      setExporting(false);
     }
   }, []);
 
@@ -234,6 +235,7 @@ export function useReportsData() {
     data,
     columns,
     loading,
+    exporting,
     error,
     hasNoResults,
     hasSearched,

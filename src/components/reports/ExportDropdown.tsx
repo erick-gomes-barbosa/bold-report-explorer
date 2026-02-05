@@ -1,4 +1,4 @@
-import { FileSpreadsheet, FileText, FileDown, Download } from 'lucide-react';
+import { FileSpreadsheet, FileText, FileDown, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,19 +13,26 @@ interface ExportDropdownProps {
   onExport: (format: ExportFormat) => void;
   disabled?: boolean;
   loading?: boolean;
+  exporting?: boolean;
 }
 
-export function ExportDropdown({ onExport, disabled, loading }: ExportDropdownProps) {
+export function ExportDropdown({ onExport, disabled, loading, exporting }: ExportDropdownProps) {
+  const isDisabled = disabled || loading || exporting;
+  
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button 
           variant="outline" 
-          disabled={disabled || loading}
+          disabled={isDisabled}
           className="gap-2"
         >
-          <Download className="h-4 w-4" />
-          Exportar
+          {exporting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          {exporting ? 'Exportando...' : 'Exportar'}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">

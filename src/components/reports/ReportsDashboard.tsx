@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Package, ClipboardList, Search } from 'lucide-react';
+import { Package, ClipboardList, Search, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportsHeader } from '@/components/reports/ReportsHeader';
 import { FiltersSidebar } from '@/components/reports/FiltersSidebar';
@@ -9,6 +9,8 @@ import { MobileFiltersDrawer } from '@/components/reports/MobileFiltersDrawer';
 import { DataTable, Column } from '@/components/reports/DataTable';
 import { ExportDropdown } from '@/components/reports/ExportDropdown';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { useReportsData } from '@/hooks/useReportsData';
 import { toast } from 'sonner';
 import type { ReportType, ReportDataItem, ExportFormat } from '@/types/reports';
@@ -211,7 +213,8 @@ export function ReportsDashboard() {
   const { 
     data, 
     columns: csvColumns,
-    loading, 
+    loading,
+    exporting,
     error,
     hasNoResults,
     hasSearched,
@@ -352,6 +355,7 @@ export function ReportsDashboard() {
                 onExport={handleExport} 
                 disabled={data.length === 0}
                 loading={loading}
+                exporting={exporting}
               />
             </div>
           </div>
@@ -419,6 +423,20 @@ export function ReportsDashboard() {
           </div>
         </Tabs>
       </main>
+
+      {/* Overlay de exportação */}
+      {exporting && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <Card className="p-6 flex flex-col items-center gap-4 shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="text-center">
+              <p className="font-medium">Exportando relatório...</p>
+              <p className="text-sm text-muted-foreground">Aguarde enquanto preparamos o arquivo</p>
+            </div>
+            <Progress className="w-48" />
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
