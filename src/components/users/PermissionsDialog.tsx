@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Shield, FileText, Database, Calendar, Folder, Server } from 'lucide-react';
+import { Loader2, Shield, FileText, Database, Calendar, Folder, Server, Plus, Pencil, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -8,9 +8,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { supabase } from '@/integrations/supabase/client';
+import { GrantPermissionsDialog } from './GrantPermissionsDialog';
+import { EditPermissionsDialog } from './EditPermissionsDialog';
+import { ManageGroupsDialog } from './ManageGroupsDialog';
 
 interface BoldUser {
   id: number;
@@ -33,6 +36,7 @@ interface PermissionsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: BoldUser | null;
+  onRefresh?: () => void;
 }
 
 const CATEGORY_MAP: Record<string, { label: string; icon: React.ElementType }> = {
@@ -57,10 +61,16 @@ const ACCESS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
   Download: { label: 'Download', variant: 'outline' },
 };
 
-export function PermissionsDialog({ open, onOpenChange, user }: PermissionsDialogProps) {
+export function PermissionsDialog({ open, onOpenChange, user, onRefresh }: PermissionsDialogProps) {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Sub-dialogs state
+  const [grantDialogOpen, setGrantDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [addGroupsDialogOpen, setAddGroupsDialogOpen] = useState(false);
+  const [manageGroupsDialogOpen, setManageGroupsDialogOpen] = useState(false);
 
   useEffect(() => {
     if (open && user) {
@@ -75,7 +85,6 @@ export function PermissionsDialog({ open, onOpenChange, user }: PermissionsDialo
     setError(null);
 
     try {
-      // Use fetch directly for GET request with query params
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       
@@ -106,6 +115,15 @@ export function PermissionsDialog({ open, onOpenChange, user }: PermissionsDialo
     }
   };
 
+  const handlePermissionSuccess = () => {
+    fetchPermissions();
+    onRefresh?.();
+  };
+
+  const handleGroupSuccess = () => {
+    onRefresh?.();
+  };
+
   const groupedPermissions = permissions.reduce((acc, perm) => {
     const categoryInfo = CATEGORY_MAP[perm.PermissionEntity];
     const category = categoryInfo?.label || 'Outros';
@@ -120,83 +138,140 @@ export function PermissionsDialog({ open, onOpenChange, user }: PermissionsDialo
   if (!user) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            <DialogTitle>Permissões de {user.displayName}</DialogTitle>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <DialogTitle>Permissões de {user.displayName}</DialogTitle>
+            </div>
+            <DialogDescription>
+              Gerencie as permissões e grupos do usuário no Bold Reports.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Permissions Section */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Permissões
+              </h4>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setGrantDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Conceder
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setEditDialogOpen(true)}
+                  disabled={permissions.length === 0}
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Editar
+                </Button>
+              </div>
+            </div>
+
+            <ScrollArea className="max-h-[200px] pr-4">
+              {loading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando...</span>
+                </div>
+              ) : error ? (
+                <div className="py-4 text-center text-destructive text-sm">
+                  <p>{error}</p>
+                </div>
+              ) : Object.keys(groupedPermissions).length === 0 ? (
+                <div className="py-4 text-center text-muted-foreground text-sm">
+                  <p>Nenhuma permissão específica encontrada.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {Object.entries(groupedPermissions).map(([category, perms], idx) => {
+                    const firstPerm = perms[0];
+                    const categoryInfo = CATEGORY_MAP[firstPerm?.PermissionEntity];
+                    const Icon = categoryInfo?.icon || Shield;
+
+                    return (
+                      <div key={category}>
+                        {idx > 0 && <Separator className="my-2" />}
+                        <div className="flex items-center gap-2 mb-2">
+                          <Icon className="h-3 w-3 text-muted-foreground" />
+                          <span className="font-medium text-xs text-muted-foreground">{category}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {perms.map((perm, permIdx) => {
+                            const accessInfo = ACCESS_LABELS[perm.PermissionAccess] || {
+                              label: perm.PermissionAccess,
+                              variant: 'secondary' as const,
+                            };
+
+                            return (
+                              <div
+                                key={permIdx}
+                                className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                              >
+                                <span className="text-sm">
+                                  {perm.ItemName || perm.PermissionEntity}
+                                </span>
+                                <Badge variant={accessInfo.variant} className="text-xs">
+                                  {accessInfo.label}
+                                </Badge>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
           </div>
-          <DialogDescription>
-            Permissões do usuário no Bold Reports.
-          </DialogDescription>
-        </DialogHeader>
 
-        <ScrollArea className="max-h-[400px] pr-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Carregando permissões...</span>
+          <Separator />
+
+          {/* Groups Section */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Grupos ({user.groups.length})
+              </h4>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setAddGroupsDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adicionar
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setManageGroupsDialogOpen(true)}
+                  disabled={user.groups.length === 0}
+                >
+                  <Pencil className="h-4 w-4 mr-1" />
+                  Gerenciar
+                </Button>
+              </div>
             </div>
-          ) : error ? (
-            <div className="py-8 text-center text-destructive">
-              <p>{error}</p>
-            </div>
-          ) : Object.keys(groupedPermissions).length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
-              <p>Nenhuma permissão específica encontrada.</p>
-              <p className="text-sm mt-1">
-                O usuário pode herdar permissões de grupos.
+
+            {user.groups.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                O usuário não pertence a nenhum grupo.
               </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {Object.entries(groupedPermissions).map(([category, perms], idx) => {
-                const firstPerm = perms[0];
-                const categoryInfo = CATEGORY_MAP[firstPerm?.PermissionEntity];
-                const Icon = categoryInfo?.icon || Shield;
-
-                return (
-                  <div key={category}>
-                    {idx > 0 && <Separator className="my-4" />}
-                    <div className="flex items-center gap-2 mb-3">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <h4 className="font-medium text-sm">{category}</h4>
-                    </div>
-                    <div className="space-y-2">
-                      {perms.map((perm, permIdx) => {
-                        const accessInfo = ACCESS_LABELS[perm.PermissionAccess] || {
-                          label: perm.PermissionAccess,
-                          variant: 'secondary' as const,
-                        };
-
-                        return (
-                          <div
-                            key={permIdx}
-                            className="flex items-center justify-between p-2 rounded-md bg-muted/50"
-                          >
-                            <span className="text-sm">
-                              {perm.ItemName || perm.PermissionEntity}
-                            </span>
-                            <Badge variant={accessInfo.variant}>
-                              {accessInfo.label}
-                            </Badge>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
-
-        {user.groups.length > 0 && (
-          <>
-            <Separator />
-            <div>
-              <h4 className="font-medium text-sm mb-2">Grupos do Usuário</h4>
+            ) : (
               <div className="flex flex-wrap gap-2">
                 {user.groups.map((group) => (
                   <Badge key={group} variant="outline">
@@ -204,13 +279,44 @@ export function PermissionsDialog({ open, onOpenChange, user }: PermissionsDialo
                   </Badge>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                O usuário herda permissões adicionais dos grupos acima.
-              </p>
-            </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              O usuário herda permissões adicionais dos grupos acima.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sub-dialogs */}
+      <GrantPermissionsDialog
+        open={grantDialogOpen}
+        onOpenChange={setGrantDialogOpen}
+        user={user}
+        onSuccess={handlePermissionSuccess}
+      />
+
+      <EditPermissionsDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        user={user}
+        onSuccess={handlePermissionSuccess}
+      />
+
+      <ManageGroupsDialog
+        open={addGroupsDialogOpen}
+        onOpenChange={setAddGroupsDialogOpen}
+        user={user}
+        mode="add"
+        onSuccess={handleGroupSuccess}
+      />
+
+      <ManageGroupsDialog
+        open={manageGroupsDialogOpen}
+        onOpenChange={setManageGroupsDialogOpen}
+        user={user}
+        mode="manage"
+        onSuccess={handleGroupSuccess}
+      />
+    </>
   );
 }

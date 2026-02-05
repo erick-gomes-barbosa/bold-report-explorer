@@ -14,6 +14,7 @@ const BOLD_EMAIL = Deno.env.get('BOLD_EMAIL') || '';
 const EXTERNAL_SUPABASE_URL = Deno.env.get('EXTERNAL_SUPABASE_URL') || '';
 const EXTERNAL_SUPABASE_SERVICE_KEY = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_KEY') || '';
 
+// Type definitions
 interface CreateUserPayload {
   action: 'create';
   email: string;
@@ -36,7 +37,77 @@ interface DeleteUserPayload {
   boldUserId: number;
 }
 
-type RequestPayload = CreateUserPayload | UpdateUserPayload | DeleteUserPayload;
+interface GetGroupsPayload {
+  action: 'getGroups';
+}
+
+interface AddPermissionPayload {
+  action: 'addPermission';
+  userId: number;
+  permissionEntity: string;
+  permissionAccess: string;
+  itemId?: string;
+}
+
+interface AddMultiplePermissionsPayload {
+  action: 'addMultiplePermissions';
+  userId: number;
+  permissions: Array<{
+    permissionEntity: string;
+    permissionAccess: string;
+    itemId?: string;
+  }>;
+}
+
+interface DeletePermissionPayload {
+  action: 'deletePermission';
+  permissionId: number;
+}
+
+interface DeleteMultiplePermissionsPayload {
+  action: 'deleteMultiplePermissions';
+  permissionIds: number[];
+}
+
+interface UpdatePermissionPayload {
+  action: 'updatePermission';
+  permissionId: number;
+  userId: number;
+  permissionEntity: string;
+  permissionAccess: string;
+  itemId?: string;
+}
+
+interface AddUserToGroupsPayload {
+  action: 'addUserToGroups';
+  userId: number;
+  groupIds: number[];
+}
+
+interface RemoveUserFromGroupsPayload {
+  action: 'removeUserFromGroups';
+  userId: number;
+  groupIds: number[];
+}
+
+interface GetItemsPayload {
+  action: 'getItems';
+  itemType: 'reports' | 'categories' | 'datasources' | 'datasets' | 'schedules';
+}
+
+type RequestPayload = 
+  | CreateUserPayload 
+  | UpdateUserPayload 
+  | DeleteUserPayload
+  | GetGroupsPayload
+  | AddPermissionPayload
+  | AddMultiplePermissionsPayload
+  | DeletePermissionPayload
+  | DeleteMultiplePermissionsPayload
+  | UpdatePermissionPayload
+  | AddUserToGroupsPayload
+  | RemoveUserFromGroupsPayload
+  | GetItemsPayload;
 
 // Generate HMACSHA256 signature for Embed Secret authentication
 async function generateEmbedSignature(message: string, secretKey: string): Promise<string> {
@@ -254,6 +325,252 @@ async function getBoldUserPermissions(token: string, userId: number): Promise<{ 
   }
 }
 
+// Get all groups from Bold Reports
+async function getBoldGroups(token: string): Promise<{ success: boolean; groups?: unknown[]; error?: string }> {
+  try {
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/groups`;
+    
+    console.log('[user-management] Fetching groups from:', url);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    console.log('[user-management] Groups response status:', response.status);
+    
+    if (response.status === 204) {
+      return { success: true, groups: [] };
+    }
+    
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      return { success: true, groups: [] };
+    }
+    
+    const data = JSON.parse(text);
+    console.log('[user-management] Groups response:', JSON.stringify(data).substring(0, 500));
+    
+    if (!response.ok) {
+      return { success: false, error: data.Message || 'Erro ao buscar grupos' };
+    }
+    
+    const groups = data.Result || data.GroupList || data || [];
+    return { success: true, groups: Array.isArray(groups) ? groups : [] };
+  } catch (error) {
+    console.error('[user-management] Error getting groups:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+// Add a single permission to a user
+async function addBoldPermission(
+  token: string, 
+  userId: number, 
+  permissionEntity: string, 
+  permissionAccess: string, 
+  itemId?: string
+): Promise<{ success: boolean; permissionId?: number; error?: string }> {
+  try {
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/permissions/users`;
+    
+    const body: Record<string, unknown> = {
+      PermissionAccess: permissionAccess,
+      UserId: userId,
+      PermissionEntity: permissionEntity,
+    };
+    
+    if (itemId) {
+      body.ItemId = itemId;
+    }
+    
+    console.log('[user-management] Adding permission:', JSON.stringify(body));
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    
+    const text = await response.text();
+    console.log('[user-management] Add permission response:', response.status, text.substring(0, 300));
+    
+    if (!response.ok) {
+      const data = text ? JSON.parse(text) : {};
+      // Handle duplicate permission (409 Conflict)
+      if (response.status === 409) {
+        return { success: false, error: 'Permissão já existe para este usuário' };
+      }
+      return { success: false, error: data.Message || data.ApiStatus?.StatusMessage || 'Erro ao adicionar permissão' };
+    }
+    
+    const data = text ? JSON.parse(text) : {};
+    return { success: true, permissionId: data.PermissionId || data.Id };
+  } catch (error) {
+    console.error('[user-management] Error adding permission:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+// Delete a permission
+async function deleteBoldPermission(token: string, permissionId: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/permissions/users/${permissionId}`;
+    
+    console.log('[user-management] Deleting permission:', permissionId);
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    console.log('[user-management] Delete permission response:', response.status);
+    
+    if (!response.ok && response.status !== 204) {
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      return { success: false, error: data.Message || 'Erro ao remover permissão' };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[user-management] Error deleting permission:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+// Add user to a group
+async function addUserToGroup(token: string, userId: number, groupId: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/groups/${groupId}/users`;
+    
+    console.log('[user-management] Adding user', userId, 'to group', groupId);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ Id: [userId] }),
+    });
+    
+    console.log('[user-management] Add to group response:', response.status);
+    
+    if (!response.ok && response.status !== 204) {
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (response.status === 409) {
+        return { success: false, error: 'Usuário já pertence a este grupo' };
+      }
+      return { success: false, error: data.Message || 'Erro ao adicionar usuário ao grupo' };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[user-management] Error adding user to group:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+// Remove user from a group
+async function removeUserFromGroup(token: string, userId: number, groupId: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/groups/${groupId}/users`;
+    
+    console.log('[user-management] Removing user', userId, 'from group', groupId);
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ Id: [userId] }),
+    });
+    
+    console.log('[user-management] Remove from group response:', response.status);
+    
+    if (!response.ok && response.status !== 204) {
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      return { success: false, error: data.Message || 'Erro ao remover usuário do grupo' };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[user-management] Error removing user from group:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+// Get items (reports, categories, datasources, datasets, schedules) for permission assignment
+async function getBoldItems(token: string, itemType: string): Promise<{ success: boolean; items?: unknown[]; error?: string }> {
+  try {
+    let url = '';
+    switch (itemType) {
+      case 'reports':
+        url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/items?itemType=Report`;
+        break;
+      case 'categories':
+        url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/items?itemType=Category`;
+        break;
+      case 'datasources':
+        url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/items?itemType=Datasource`;
+        break;
+      case 'datasets':
+        url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/items?itemType=Dataset`;
+        break;
+      case 'schedules':
+        url = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}/v1.0/schedules`;
+        break;
+      default:
+        return { success: false, error: 'Tipo de item inválido' };
+    }
+    
+    console.log('[user-management] Fetching items from:', url);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.status === 204) {
+      return { success: true, items: [] };
+    }
+    
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      return { success: true, items: [] };
+    }
+    
+    const data = JSON.parse(text);
+    console.log('[user-management] Items response:', JSON.stringify(data).substring(0, 500));
+    
+    if (!response.ok) {
+      return { success: false, error: data.Message || 'Erro ao buscar itens' };
+    }
+    
+    const items = data.Result || data.Items || data || [];
+    return { success: true, items: Array.isArray(items) ? items : [] };
+  } catch (error) {
+    console.error('[user-management] Error getting items:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
 // Create external Supabase client with service role
 function getExternalSupabaseAdmin() {
   return createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_SERVICE_KEY, {
@@ -273,16 +590,11 @@ Deno.serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
     
-    // GET request - fetch permissions
+    // GET request - fetch permissions or groups
     if (req.method === 'GET') {
       const userId = url.searchParams.get('userId');
-      
-      if (!userId) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'userId é obrigatório' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      const action = url.searchParams.get('action');
+      const itemType = url.searchParams.get('itemType');
       
       const token = await getBoldAuthToken();
       if (!token) {
@@ -292,11 +604,36 @@ Deno.serve(async (req: Request) => {
         );
       }
       
-      const result = await getBoldUserPermissions(token, parseInt(userId, 10));
+      // Get all groups
+      if (action === 'getGroups') {
+        const result = await getBoldGroups(token);
+        return new Response(
+          JSON.stringify(result),
+          { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Get items for permission assignment
+      if (action === 'getItems' && itemType) {
+        const result = await getBoldItems(token, itemType);
+        return new Response(
+          JSON.stringify(result),
+          { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Get user permissions (default GET behavior)
+      if (userId) {
+        const result = await getBoldUserPermissions(token, parseInt(userId, 10));
+        return new Response(
+          JSON.stringify(result),
+          { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       
       return new Response(
-        JSON.stringify(result),
-        { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Parâmetros inválidos' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -313,6 +650,180 @@ Deno.serve(async (req: Request) => {
     }
     
     const externalSupabase = getExternalSupabaseAdmin();
+
+    // GET GROUPS (via POST for consistency)
+    if (payload.action === 'getGroups') {
+      const result = await getBoldGroups(token);
+      return new Response(
+        JSON.stringify(result),
+        { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // GET ITEMS (via POST)
+    if (payload.action === 'getItems') {
+      const result = await getBoldItems(token, payload.itemType);
+      return new Response(
+        JSON.stringify(result),
+        { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ADD SINGLE PERMISSION
+    if (payload.action === 'addPermission') {
+      const { userId, permissionEntity, permissionAccess, itemId } = payload;
+      const result = await addBoldPermission(token, userId, permissionEntity, permissionAccess, itemId);
+      return new Response(
+        JSON.stringify(result),
+        { status: result.success ? 200 : 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ADD MULTIPLE PERMISSIONS
+    if (payload.action === 'addMultiplePermissions') {
+      const { userId, permissions } = payload;
+      const results: Array<{ success: boolean; permissionEntity: string; error?: string }> = [];
+      
+      for (const perm of permissions) {
+        const result = await addBoldPermission(token, userId, perm.permissionEntity, perm.permissionAccess, perm.itemId);
+        results.push({
+          success: result.success,
+          permissionEntity: perm.permissionEntity,
+          error: result.error,
+        });
+      }
+      
+      const allSuccess = results.every(r => r.success);
+      const failed = results.filter(r => !r.success);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: allSuccess, 
+          results,
+          message: allSuccess ? 'Todas as permissões foram adicionadas' : `${failed.length} permissão(ões) falharam`,
+        }),
+        { status: allSuccess ? 200 : 207, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // DELETE SINGLE PERMISSION
+    if (payload.action === 'deletePermission') {
+      const { permissionId } = payload;
+      const result = await deleteBoldPermission(token, permissionId);
+      return new Response(
+        JSON.stringify(result),
+        { status: result.success ? 200 : 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // DELETE MULTIPLE PERMISSIONS
+    if (payload.action === 'deleteMultiplePermissions') {
+      const { permissionIds } = payload;
+      const results: Array<{ success: boolean; permissionId: number; error?: string }> = [];
+      
+      for (const permissionId of permissionIds) {
+        const result = await deleteBoldPermission(token, permissionId);
+        results.push({
+          success: result.success,
+          permissionId,
+          error: result.error,
+        });
+      }
+      
+      const allSuccess = results.every(r => r.success);
+      const failed = results.filter(r => !r.success);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: allSuccess, 
+          results,
+          message: allSuccess ? 'Todas as permissões foram removidas' : `${failed.length} remoção(ões) falharam`,
+        }),
+        { status: allSuccess ? 200 : 207, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // UPDATE PERMISSION (delete + create)
+    if (payload.action === 'updatePermission') {
+      const { permissionId, userId, permissionEntity, permissionAccess, itemId } = payload;
+      
+      // First delete the old permission
+      const deleteResult = await deleteBoldPermission(token, permissionId);
+      if (!deleteResult.success) {
+        return new Response(
+          JSON.stringify({ success: false, error: deleteResult.error, stage: 'delete' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Then create the new permission
+      const addResult = await addBoldPermission(token, userId, permissionEntity, permissionAccess, itemId);
+      if (!addResult.success) {
+        return new Response(
+          JSON.stringify({ success: false, error: addResult.error, stage: 'create' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      return new Response(
+        JSON.stringify({ success: true, message: 'Permissão atualizada com sucesso', permissionId: addResult.permissionId }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ADD USER TO GROUPS
+    if (payload.action === 'addUserToGroups') {
+      const { userId, groupIds } = payload;
+      const results: Array<{ success: boolean; groupId: number; error?: string }> = [];
+      
+      for (const groupId of groupIds) {
+        const result = await addUserToGroup(token, userId, groupId);
+        results.push({
+          success: result.success,
+          groupId,
+          error: result.error,
+        });
+      }
+      
+      const allSuccess = results.every(r => r.success);
+      const failed = results.filter(r => !r.success);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: allSuccess, 
+          results,
+          message: allSuccess ? 'Usuário adicionado aos grupos' : `${failed.length} adição(ões) falharam`,
+        }),
+        { status: allSuccess ? 200 : 207, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // REMOVE USER FROM GROUPS
+    if (payload.action === 'removeUserFromGroups') {
+      const { userId, groupIds } = payload;
+      const results: Array<{ success: boolean; groupId: number; error?: string }> = [];
+      
+      for (const groupId of groupIds) {
+        const result = await removeUserFromGroup(token, userId, groupId);
+        results.push({
+          success: result.success,
+          groupId,
+          error: result.error,
+        });
+      }
+      
+      const allSuccess = results.every(r => r.success);
+      const failed = results.filter(r => !r.success);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: allSuccess, 
+          results,
+          message: allSuccess ? 'Usuário removido dos grupos' : `${failed.length} remoção(ões) falharam`,
+        }),
+        { status: allSuccess ? 200 : 207, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // CREATE USER
     if (payload.action === 'create') {
