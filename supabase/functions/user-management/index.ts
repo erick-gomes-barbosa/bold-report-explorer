@@ -758,7 +758,19 @@ Deno.serve(async (req: Request) => {
       
       // Then create the new permission
       const addResult = await addBoldPermission(token, userId, permissionEntity, permissionAccess, itemId);
+      
+      // If permission already exists (409), it means there's another permission for this entity
+      // This can happen if user has duplicate permissions - we treat this as success since the old one was deleted
       if (!addResult.success) {
+        // Check if it's a duplicate error - this is acceptable after delete
+        if (addResult.error?.includes('já existe') || addResult.error?.includes('already exists')) {
+          console.log('[user-management] Permission already exists after delete, considering update successful');
+          return new Response(
+            JSON.stringify({ success: true, message: 'Permissão atualizada (permissão existente mantida)' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ success: false, error: addResult.error, stage: 'create' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
