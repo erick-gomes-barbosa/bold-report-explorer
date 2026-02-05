@@ -1,353 +1,193 @@
 
-## Plano: Gerenciamento de Permissões e Grupos de Usuários
+## Plano: Visibilidade de Relatórios Baseada em Permissões
 
-Este plano implementa um sistema completo de gerenciamento de permissões e grupos para usuários do Bold Reports, baseado na análise detalhada da API REST v1.0.
-
----
-
-## Descobertas da API
-
-### Endpoints Disponíveis
-
-**Permissões de Usuário:**
-| Operacao | Endpoint | Descricao |
-|----------|----------|-----------|
-| Adicionar | POST /v1.0/permissions/users | Adiciona UMA permissao por chamada |
-| Listar | GET /v1.0/permissions/users/{userId} | Lista todas as permissoes do usuario |
-| Remover | DELETE /v1.0/permissions/users/{permissionId} | Remove permissao pelo PermissionId |
-
-**Grupos:**
-| Operacao | Endpoint | Descricao |
-|----------|----------|-----------|
-| Listar grupos | GET /v1.0/groups | Lista todos os grupos disponiveis |
-| Adicionar usuarios | POST /v1.0/groups/{groupId}/users | Adiciona VARIOS usuarios a UM grupo |
-| Remover usuarios | DELETE /v1.0/groups/{groupId}/users | Remove VARIOS usuarios de UM grupo |
-| Grupos do usuario | GET /v1.0/users/{user}/groups | Lista grupos de um usuario |
-
-### Limitacoes Identificadas
-
-1. **Permissoes sao adicionadas uma por vez** - nao ha endpoint de batch
-2. **Nao ha endpoint de atualizacao de permissao** - precisa deletar e recriar
-3. **Adicionar usuario a multiplos grupos** - requer uma chamada por grupo
-4. **Remover usuario de multiplos grupos** - requer uma chamada por grupo
+Este plano implementa a verificação de permissões do usuário para controlar a visibilidade e disponibilidade das abas de relatórios (Bens por Necessidade, Inventário, Auditoria) na página principal.
 
 ---
 
-## Arquitetura da Solucao
+## Arquitetura da Solução
 
-### Novos Componentes a Criar
+### Fluxo de Verificação de Permissões
 
 ```text
-src/components/users/
-+-- PermissionsDialog.tsx        (MODIFICAR - adicionar botoes e abas)
-+-- GrantPermissionsDialog.tsx   (NOVO - modal para conceder permissoes)
-+-- EditPermissionsDialog.tsx    (NOVO - modal para editar/remover permissoes)
-+-- ManageGroupsDialog.tsx       (NOVO - modal para gerenciar grupos)
+1. Usuario faz login
+2. AuthContext sincroniza com Bold Reports (ja implementado)
+3. Sistema busca permissoes do usuario via Edge Function
+4. Hook useReportPermissions processa as permissoes
+5. ReportsDashboard filtra abas visiveis baseado nas permissoes
 ```
 
-### Edge Function a Estender
+### Lógica de Permissão para Relatórios
 
-```text
-supabase/functions/user-management/index.ts
-+-- Novas acoes:
-    +-- getGroups           (listar todos os grupos)
-    +-- addPermission       (adicionar permissao)
-    +-- deletePermission    (remover permissao)
-    +-- addUserToGroups     (adicionar usuario a grupos)
-    +-- removeUserFromGroups (remover usuario de grupos)
-```
+Um usuário pode ver um relatório se possuir QUALQUER UMA das seguintes permissões:
+
+| Permissao | Descricao |
+|-----------|-----------|
+| AllReports (Read/ReadWrite/ReadWriteDelete) | Acesso a todos os relatorios |
+| ReportsInCategory + CategoryId correspondente | Acesso a categoria do relatorio |
+| SpecificReports + ItemId = ReportId | Acesso especifico ao relatorio |
+
+### Administradores
+
+Usuários com `isAdmin = true` (do AuthContext) têm acesso a TODOS os relatórios, sem necessidade de verificação adicional.
 
 ---
 
-## Parte 1: Modificacao do PermissionsDialog
+## Parte 1: Criar Hook useReportPermissions
 
-Transformar o dialog atual em um hub de gerenciamento com duas secoes:
+**Arquivo**: `src/hooks/useReportPermissions.ts`
 
-### Secao de Permissoes
-- Exibir lista de permissoes atuais (ja implementado)
-- Adicionar dois botoes:
-  - **"Conceder Permissoes"** - abre GrantPermissionsDialog
-  - **"Editar Permissoes"** - abre EditPermissionsDialog
+### Responsabilidades
 
-### Secao de Grupos
-- Exibir lista de grupos do usuario (ja implementado)
-- Adicionar dois botoes:
-  - **"Adicionar a Grupos"** - abre ManageGroupsDialog (modo adicao)
-  - **"Gerenciar Grupos"** - abre ManageGroupsDialog (modo edicao)
+1. Buscar permissões do usuário logado via Edge Function
+2. Processar e mapear permissões para relatórios específicos
+3. Expor função para verificar acesso a um relatório pelo ID
+4. Cachear permissões para evitar chamadas repetidas
 
----
+### Interface
 
-## Parte 2: GrantPermissionsDialog (Conceder Permissoes)
-
-Modal para adicionar novas permissoes ao usuario.
-
-### Interface do Usuario
-
-```text
-+--------------------------------------------------+
-|  Conceder Permissoes para [Nome do Usuario]      |
-+--------------------------------------------------+
-|                                                  |
-|  Categoria: Relatorios                           |
-|  +----------------------------------------------+|
-|  | [ ] Todos os Relatorios                      ||
-|  |     Acesso: [Visualizar v]                   ||
-|  | [ ] Relatorios por Categoria                 ||
-|  |     Categoria: [Selecionar v]                ||
-|  |     Acesso: [Visualizar v]                   ||
-|  | [ ] Relatorio Especifico                     ||
-|  |     Relatorio: [Selecionar v]                ||
-|  |     Acesso: [Visualizar v]                   ||
-|  +----------------------------------------------+|
-|                                                  |
-|  Categoria: Fontes de Dados                      |
-|  +----------------------------------------------+|
-|  | [ ] Todas as Fontes                          ||
-|  |     Acesso: [Visualizar v]                   ||
-|  | [ ] Fonte Especifica                         ||
-|  |     Fonte: [Selecionar v]                    ||
-|  |     Acesso: [Visualizar v]                   ||
-|  +----------------------------------------------+|
-|                                                  |
-|  (Similar para Datasets, Categorias, Schedules)  |
-|                                                  |
-+--------------------------------------------------+
-|                      [Cancelar]  [Salvar]        |
-+--------------------------------------------------+
-```
-
-### Tipos de Permissao (PermissionEntity)
-- AllReports, ReportsInCategory, SpecificReports
-- AllCategories, SpecificCategory
-- AllDataSources, SpecificDataSource
-- AllDatasets, SpecificDataset
-- AllSchedules, SpecificSchedule
-
-### Niveis de Acesso (PermissionAccess)
-- Create (Criar)
-- Read (Visualizar)
-- ReadWrite (Ler/Escrever)
-- ReadWriteDelete (Acesso Total)
-- Download (Download)
-
-### Comportamento
-- Quando o usuario seleciona uma categoria, o select correspondente eh habilitado
-- Se nenhuma opcao for selecionada em uma categoria, o usuario nao tera permissao nela
-- Ao salvar, faz chamadas sequenciais para adicionar cada permissao selecionada
-
----
-
-## Parte 3: EditPermissionsDialog (Editar Permissoes)
-
-Modal para editar ou remover permissoes existentes.
-
-### Interface do Usuario
-
-```text
-+--------------------------------------------------+
-|  Editar Permissoes de [Nome do Usuario]          |
-+--------------------------------------------------+
-|                                                  |
-|  Relatorios                                      |
-|  +----------------------------------------------+|
-|  | [x] Todos os Relatorios - Visualizar    [X]  ||
-|  | [x] Categoria X - Ler/Escrever          [X]  ||
-|  +----------------------------------------------+|
-|                                                  |
-|  Fontes de Dados                                 |
-|  +----------------------------------------------+|
-|  | [x] Fonte ABC - Acesso Total            [X]  ||
-|  +----------------------------------------------+|
-|                                                  |
-|  Selecione as permissoes para alterar ou         |
-|  clique no X para remover                        |
-|                                                  |
-+--------------------------------------------------+
-|  [Alterar Selecionadas v]   [Cancelar] [Salvar]  |
-+--------------------------------------------------+
-```
-
-### Comportamento
-- Lista as permissoes atuais agrupadas por categoria
-- Cada permissao tem um checkbox e um botao X para remocao
-- Dropdown "Alterar Selecionadas" permite mudar o nivel de acesso
-- Para alterar: deleta a permissao antiga e cria uma nova com o novo nivel
-
----
-
-## Parte 4: ManageGroupsDialog (Gerenciar Grupos)
-
-Modal unificado para adicionar e remover usuario de grupos.
-
-### Modo Adicao
-
-```text
-+--------------------------------------------------+
-|  Adicionar [Nome] a Grupos                       |
-+--------------------------------------------------+
-|                                                  |
-|  Grupos Disponiveis:                             |
-|  +----------------------------------------------+|
-|  | [x] Visualizadores                           ||
-|  | [ ] Editores                                 ||
-|  | [ ] Financeiro                               ||
-|  | [ ] RH                                       ||
-|  +----------------------------------------------+|
-|                                                  |
-|  (Grupos que o usuario ja pertence estao         |
-|   desabilitados e marcados com "(membro)")       |
-|                                                  |
-+--------------------------------------------------+
-|                      [Cancelar]  [Adicionar]     |
-+--------------------------------------------------+
-```
-
-### Modo Edicao
-
-```text
-+--------------------------------------------------+
-|  Gerenciar Grupos de [Nome]                      |
-+--------------------------------------------------+
-|                                                  |
-|  Grupos Atuais:                                  |
-|  +----------------------------------------------+|
-|  | [x] Visualizadores                      [X]  ||
-|  | [x] Financeiro                          [X]  ||
-|  +----------------------------------------------+|
-|                                                  |
-|  Clique no X para remover o usuario do grupo     |
-|                                                  |
-+--------------------------------------------------+
-|                      [Cancelar]  [Salvar]        |
-+--------------------------------------------------+
-```
-
----
-
-## Parte 5: Extensao da Edge Function
-
-### Novas Acoes a Implementar
-
-**1. getGroups** - Listar todos os grupos disponiveis
 ```typescript
-GET /v1.0/groups
-Retorna: { groups: [{ Id, Name, Description }] }
+interface UseReportPermissionsResult {
+  loading: boolean;
+  error: string | null;
+  canAccessReport: (reportId: string) => boolean;
+  accessibleReports: string[]; // Lista de IDs acessíveis
+  refresh: () => Promise<void>;
+}
 ```
 
-**2. addPermission** - Adicionar uma permissao ao usuario
+### Lógica de Verificação
+
 ```typescript
-POST /v1.0/permissions/users
-Body: { PermissionAccess, UserId, PermissionEntity, ItemId? }
+function canAccessReport(reportId: string): boolean {
+  // 1. Admin tem acesso total
+  if (boldReportsInfo.isAdmin) return true;
+  
+  // 2. Verifica AllReports
+  if (permissions.some(p => 
+    p.PermissionEntity === 'AllReports' && 
+    ['Read', 'ReadWrite', 'ReadWriteDelete'].includes(p.PermissionAccess)
+  )) return true;
+  
+  // 3. Verifica SpecificReports com ItemId
+  if (permissions.some(p => 
+    p.PermissionEntity === 'SpecificReports' && 
+    p.ItemId === reportId &&
+    ['Read', 'ReadWrite', 'ReadWriteDelete', 'Download'].includes(p.PermissionAccess)
+  )) return true;
+  
+  // 4. Verifica ReportsInCategory (requer conhecer categoria do relatório)
+  // Esta verificação pode precisar de dados adicionais da API
+  
+  return false;
+}
 ```
 
-**3. deletePermission** - Remover uma permissao
+---
+
+## Parte 2: Modificar ReportsDashboard
+
+**Arquivo**: `src/components/reports/ReportsDashboard.tsx`
+
+### Alterações
+
+1. Importar e usar o hook `useReportPermissions`
+2. Filtrar abas baseado nas permissões
+3. Redirecionar para primeira aba disponível se a aba atual não for acessível
+4. Exibir mensagem quando nenhum relatório estiver disponível
+
+### Estrutura de Tabs Filtradas
+
 ```typescript
-DELETE /v1.0/permissions/users/{permissionId}
+const REPORT_TABS = [
+  { id: 'bens-necessidade', reportId: '8fae90ee-011b-40d4-a53a-65b74f97b3cb', label: 'Bens por Necessidade', icon: Package },
+  { id: 'inventario', reportId: '0d93ea95-4d38-4b5e-b8c2-35c784564ff0', label: 'Inventário', icon: ClipboardList },
+  { id: 'auditoria', reportId: '4d08d16c-8e95-4e9e-b937-570cd49bb207', label: 'Auditoria', icon: Search },
+];
+
+// Filtrar tabs acessíveis
+const accessibleTabs = REPORT_TABS.filter(tab => canAccessReport(tab.reportId));
 ```
 
-**4. addUserToGroups** - Adicionar usuario a multiplos grupos
+### Estado de Loading
+
+Enquanto as permissões estão sendo carregadas, exibir skeleton/loading nas abas para evitar flash de conteúdo.
+
+---
+
+## Parte 3: Atualizar BoldReportsInfo
+
+**Arquivo**: `src/types/boldAuth.ts`
+
+Adicionar campo opcional para armazenar permissões do usuário, evitando múltiplas chamadas:
+
 ```typescript
-// Loop interno para cada grupo
-POST /v1.0/groups/{groupId}/users
-Body: { Id: [userId] }
+export interface BoldReportsInfo {
+  // ... campos existentes
+  permissions?: Permission[]; // Cache de permissões
+}
 ```
 
-**5. removeUserFromGroups** - Remover usuario de multiplos grupos
-```typescript
-// Loop interno para cada grupo
-DELETE /v1.0/groups/{groupId}/users
-Body: { Id: [userId] }
-```
+---
+
+## Parte 4: Estender Edge Function (Opcional)
+
+Se necessário buscar a categoria de cada relatório para verificar `ReportsInCategory`, adicionar uma ação `getReportDetails` na Edge Function.
+
+**Alternativa mais simples**: Para a verificação inicial, focar em `AllReports` e `SpecificReports`, que já contêm o `ItemId` necessário.
 
 ---
 
 ## Arquivos a Criar/Modificar
 
-| Arquivo | Acao | Descricao |
+| Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| src/components/users/PermissionsDialog.tsx | Modificar | Adicionar botoes de acao e secoes |
-| src/components/users/GrantPermissionsDialog.tsx | Criar | Modal para conceder permissoes |
-| src/components/users/EditPermissionsDialog.tsx | Criar | Modal para editar/remover permissoes |
-| src/components/users/ManageGroupsDialog.tsx | Criar | Modal para gerenciar grupos |
-| supabase/functions/user-management/index.ts | Modificar | Adicionar novas acoes |
+| src/hooks/useReportPermissions.ts | Criar | Hook para gerenciar permissões de relatórios |
+| src/components/reports/ReportsDashboard.tsx | Modificar | Filtrar abas baseado em permissões |
+| src/types/boldAuth.ts | Modificar | Adicionar cache de permissões (opcional) |
+| src/contexts/AuthContext.tsx | Modificar | Buscar permissões durante sync (opcional) |
 
 ---
 
-## Detalhes Tecnicos
+## Fluxo de Usuário
 
-### Estrategia para Permissoes em Lote
-
-Como a API nao suporta adicao em batch, a Edge Function fara:
-
-```typescript
-async function addMultiplePermissions(token, userId, permissions) {
-  const results = [];
-  for (const perm of permissions) {
-    const result = await addPermission(token, {
-      UserId: userId,
-      PermissionEntity: perm.entity,
-      PermissionAccess: perm.access,
-      ItemId: perm.itemId // opcional
-    });
-    results.push(result);
-  }
-  return results;
-}
-```
-
-### Estrategia para Grupos Multiplos
-
-```typescript
-async function addUserToMultipleGroups(token, userId, groupIds) {
-  const results = [];
-  for (const groupId of groupIds) {
-    const result = await fetch(`/v1.0/groups/${groupId}/users`, {
-      method: 'POST',
-      body: JSON.stringify({ Id: [userId] })
-    });
-    results.push(result);
-  }
-  return results;
-}
-```
-
-### Estrategia para "Atualizar" Permissao
-
-Como nao ha endpoint de update:
-
-```typescript
-async function updatePermission(token, permissionId, newAccess, userId, entity, itemId) {
-  // 1. Deletar permissao existente
-  await deletePermission(token, permissionId);
-  
-  // 2. Criar nova permissao com novo nivel
-  await addPermission(token, {
-    UserId: userId,
-    PermissionEntity: entity,
-    PermissionAccess: newAccess,
-    ItemId: itemId
-  });
-}
+```text
+1. Usuário faz login
+2. Sistema sincroniza com Bold Reports (AuthContext)
+3. Ao acessar página de relatórios:
+   a. Hook useReportPermissions busca permissões do Bold
+   b. Sistema filtra abas disponíveis
+   c. Se usuário não tem acesso a nenhum relatório:
+      - Exibe mensagem "Você não possui permissão para visualizar relatórios"
+   d. Se usuário perde acesso à aba atual:
+      - Redireciona para primeira aba disponível
 ```
 
 ---
 
-## Consideracoes de UX
+## Considerações de UX
 
-1. **Loading states**: Mostrar indicador durante operacoes em lote
-2. **Feedback de erros**: Se uma operacao falhar em batch, mostrar quais falharam
-3. **Confirmacao**: Pedir confirmacao antes de remover permissoes ou grupos
-4. **Validacao**: Impedir adicao de permissoes duplicadas (API retorna 409)
-5. **Refresh**: Atualizar dados apos cada operacao bem-sucedida
+1. **Loading State**: Mostrar skeleton enquanto verifica permissões
+2. **Mensagem de Erro**: Explicar claramente quando usuário não tem acesso
+3. **Fallback para Admin**: Administradores sempre veem todas as abas
+4. **Cache**: Evitar buscar permissões a cada navegação
+5. **Refresh**: Permitir atualizar permissões se necessário
 
 ---
 
-## Sequencia de Implementacao
+## Considerações de Segurança
 
-1. Estender a Edge Function com novas acoes
-2. Criar ManageGroupsDialog (mais simples)
-3. Criar GrantPermissionsDialog
-4. Criar EditPermissionsDialog
-5. Modificar PermissionsDialog para integrar tudo
-6. Testar fluxos completos
+1. **Verificação Server-Side**: A Edge Function já restringe acesso à exportação
+2. **Verificação Client-Side**: Esta implementação é para UX (ocultar opções)
+3. **Double-Check**: Mesmo que aba seja visível, export verifica permissões novamente
+
+---
+
+## Sequência de Implementação
+
+1. Criar hook useReportPermissions
+2. Testar busca de permissões
+3. Modificar ReportsDashboard para usar o hook
+4. Testar fluxo completo com diferentes usuários
+5. Ajustar UX baseado em feedback
 
