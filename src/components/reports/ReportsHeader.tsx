@@ -1,5 +1,5 @@
-import { Users, LogOut, User, ChevronDown, Shield, ShieldCheck, Settings } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Users, LogOut, User, ChevronDown, Shield, ShieldCheck, Settings, ArrowLeft } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,6 +25,9 @@ export function ReportsHeader({
 }: ReportsHeaderProps) {
   const { user, profile, signOut, boldReportsInfo } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  const isOnUsersPage = location.pathname === '/usuarios';
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'U';
@@ -62,10 +65,14 @@ export function ReportsHeader({
                 variant="ghost" 
                 size="icon" 
                 className="text-primary-foreground hover:bg-primary-foreground/10"
-                onClick={() => navigate('/usuarios')}
-                title="Gerenciar Usuários"
+                onClick={() => navigate(isOnUsersPage ? '/' : '/usuarios')}
+                title={isOnUsersPage ? "Voltar para Relatórios" : "Gerenciar Usuários"}
               >
-                <Users className="h-5 w-5" />
+                {isOnUsersPage ? (
+                  <ArrowLeft className="h-5 w-5" />
+                ) : (
+                  <Users className="h-5 w-5" />
+                )}
               </Button>
             )}
 
