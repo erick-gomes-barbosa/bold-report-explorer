@@ -161,6 +161,7 @@ async function findUserByEmail(systemToken: string, email: string): Promise<User
 async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
   const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
   console.log('[BoldAuth] Getting groups for user:', userId);
+  console.log('[BoldAuth] Groups URL:', groupsUrl);
   
   const response = await fetch(groupsUrl, {
     method: 'GET',
@@ -171,12 +172,28 @@ async function getUserGroups(systemToken: string, userId: number): Promise<strin
   });
   
   if (!response.ok) {
-    console.warn('[BoldAuth] Could not fetch user groups');
+    const errorText = await response.text();
+    console.warn('[BoldAuth] Could not fetch user groups:', response.status, errorText.substring(0, 200));
     return [];
   }
   
-  const data: GroupsResponse = await response.json();
-  const groupNames = data.Groups?.map(g => g.Name) || [];
+  const data = await response.json();
+  console.log('[BoldAuth] Groups response type:', typeof data);
+  console.log('[BoldAuth] Groups response keys:', Object.keys(data || {}));
+  console.log('[BoldAuth] Groups raw response:', JSON.stringify(data).substring(0, 500));
+  
+  // Handle different response formats from Bold Reports API
+  let groups: Array<{ Id?: string; Name?: string; GroupName?: string }> = [];
+  
+  if (Array.isArray(data)) {
+    groups = data;
+  } else if (data && typeof data === 'object') {
+    // Try common response wrapper properties
+    groups = data.GroupList || data.Groups || data.value || data.items || data.Result || [];
+  }
+  
+  // Extract group names, handling different property names
+  const groupNames = groups.map(g => g.Name || g.GroupName || '').filter(Boolean);
   console.log('[BoldAuth] User groups:', groupNames);
   
   return groupNames;
