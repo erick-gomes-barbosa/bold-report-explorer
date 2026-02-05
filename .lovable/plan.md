@@ -1,66 +1,114 @@
 
-# Plano: Corrigir Parsing da Resposta de Usuarios do Bold Reports
+# Plano: Corrigir Busca de Grupos do Usuário no Bold Reports
 
 ## Problema Identificado
 
-Os logs da edge function mostram claramente o problema:
-
+Os logs mostram:
 ```text
-[BoldAuth] Users response keys: [ "UserList" ]
-[BoldAuth] Found 0 users total
-[BoldAuth] User not found in Bold Reports
+[BoldAuth] Getting groups for user: 16958
+[BoldAuth] User groups: []
 ```
 
-A API do Bold Reports retorna os usuarios na propriedade `UserList`, mas o codigo atual na linha 127 so verifica:
-- `data.value`
-- `data.Users`
-- `data.items`
-- `data.Result`
+O userId 16958 está correto, a requisição de grupos funciona (não há erro), mas retorna um array vazio. Similar ao problema anterior com `UserList`, a API do Bold Reports provavelmente retorna os grupos em uma propriedade diferente de `Groups`.
 
-**Nao inclui `data.UserList`**, resultando em um array vazio e fazendo o sistema acreditar que o usuario nao existe.
+## Solução
 
-## Solucao
-
-Adicionar `data.UserList` na lista de propriedades verificadas.
+Adicionar logging detalhado na função `getUserGroups` para capturar a estrutura exata da resposta e ajustar o parsing para considerar múltiplos formatos possíveis.
 
 ## Arquivo a Modificar
 
-| Arquivo | Alteracao |
+| Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/bold-auth/index.ts` | Adicionar `UserList` no parsing da resposta (linha 127) |
+| `supabase/functions/bold-auth/index.ts` | Melhorar função `getUserGroups` com logging e parsing flexível |
 
-## Alteracao Especifica
+## Alterações Específicas
 
-**Antes (linha 127):**
+### Função `getUserGroups` (linhas 160-183)
+
+**Antes:**
 ```javascript
-users = data.value || data.Users || data.items || data.Result || [];
+async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
+  const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
+  console.log('[BoldAuth] Getting groups for user:', userId);
+  
+  const response = await fetch(groupsUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${systemToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    console.warn('[BoldAuth] Could not fetch user groups');
+    return [];
+  }
+  
+  const data: GroupsResponse = await response.json();
+  const groupNames = data.Groups?.map(g => g.Name) || [];
+  console.log('[BoldAuth] User groups:', groupNames);
+  
+  return groupNames;
+}
 ```
 
 **Depois:**
 ```javascript
-users = data.UserList || data.value || data.Users || data.items || data.Result || [];
+async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
+  const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
+  console.log('[BoldAuth] Getting groups for user:', userId);
+  console.log('[BoldAuth] Groups URL:', groupsUrl);
+  
+  const response = await fetch(groupsUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${systemToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.warn('[BoldAuth] Could not fetch user groups:', response.status, errorText.substring(0, 200));
+    return [];
+  }
+  
+  const data = await response.json();
+  console.log('[BoldAuth] Groups response type:', typeof data);
+  console.log('[BoldAuth] Groups response keys:', Object.keys(data || {}));
+  console.log('[BoldAuth] Groups raw response:', JSON.stringify(data).substring(0, 500));
+  
+  // Handle different response formats from Bold Reports API
+  let groups: Array<{ Id?: string; Name?: string; GroupName?: string }> = [];
+  
+  if (Array.isArray(data)) {
+    groups = data;
+  } else if (data && typeof data === 'object') {
+    // Try common response wrapper properties
+    groups = data.GroupList || data.Groups || data.value || data.items || data.Result || [];
+  }
+  
+  // Extract group names, handling different property names
+  const groupNames = groups.map(g => g.Name || g.GroupName || '').filter(Boolean);
+  console.log('[BoldAuth] User groups:', groupNames);
+  
+  return groupNames;
+}
 ```
+
+## Mudanças Principais
+
+1. **Logging da URL**: Adiciona log da URL de grupos para debug
+2. **Logging detalhado da resposta**: Mostra tipo, chaves e conteúdo raw
+3. **Parsing flexível**: Verifica múltiplas propriedades possíveis (`GroupList`, `Groups`, `value`, etc.)
+4. **Múltiplos nomes de campo**: Considera tanto `Name` quanto `GroupName`
 
 ## Resultado Esperado
 
-Apos a correcao:
+Após a correção, os logs mostrarão a estrutura exata da resposta da API, permitindo identificar onde os grupos estão sendo retornados. Se estiverem em `GroupList` (como os usuários em `UserList`), o novo código irá parseá-los corretamente.
 
-```text
-[BoldAuth] Users response keys: [ "UserList" ]
-[BoldAuth] Found 2 users total           // Agora encontra os usuarios
-[BoldAuth] Found user: { id: X, email: erick.barbosa@baymetrics.com.br }
-[BoldAuth] User groups: ["System Administrator"]
-[BoldAuth] Authentication successful: { userId: X, isAdmin: true }
-```
-
-O usuario sera reconhecido como:
-- `synced: true`
-- `isAdmin: true`
-- `userId: <id numerico>`
-- `groups: ["System Administrator"]`
-
-## Implantacao
+## Implantação
 
 1. Atualizar a edge function `bold-auth`
-2. Re-deploy automatico
-3. Testar login novamente
+2. Re-deploy automático
+3. Testar login novamente para verificar os logs
