@@ -1,114 +1,163 @@
 
-# Plano: Corrigir Busca de Grupos do Usuário no Bold Reports
+# Plano: Pagina de Gerencia de Usuarios para Administradores Bold Reports
 
-## Problema Identificado
+## Resumo
 
-Os logs mostram:
+Transformar o botao de configuracoes sem funcao em um botao de acesso a uma nova pagina de gerenciamento de usuarios, visivel apenas para administradores Bold Reports. A pagina exibira uma tabela com os usuarios e suas permissoes.
+
+## Arquitetura da Solucao
+
 ```text
-[BoldAuth] Getting groups for user: 16958
-[BoldAuth] User groups: []
++------------------+       +--------------------+       +--------------------+
+|  ReportsHeader   | ----> | /usuarios          | <---- | bold-users         |
+|  (Botao Admin)   |       | (Nova Pagina)      |       | (Nova Edge Func)   |
++------------------+       +--------------------+       +--------------------+
+        |                          |                           |
+        v                          v                           v
+   Visivel apenas           Tabela com                   Busca usuarios
+   se isAdmin=true          usuarios e grupos            do Bold Reports
 ```
 
-O userId 16958 está correto, a requisição de grupos funciona (não há erro), mas retorna um array vazio. Similar ao problema anterior com `UserList`, a API do Bold Reports provavelmente retorna os grupos em uma propriedade diferente de `Groups`.
+## Arquivos a Criar
 
-## Solução
-
-Adicionar logging detalhado na função `getUserGroups` para capturar a estrutura exata da resposta e ajustar o parsing para considerar múltiplos formatos possíveis.
-
-## Arquivo a Modificar
-
-| Arquivo | Alteração |
+| Arquivo | Descricao |
 |---------|-----------|
-| `supabase/functions/bold-auth/index.ts` | Melhorar função `getUserGroups` com logging e parsing flexível |
+| `src/pages/UserManagement.tsx` | Pagina principal de gerencia de usuarios |
+| `supabase/functions/bold-users/index.ts` | Edge function para listar usuarios do Bold Reports |
 
-## Alterações Específicas
+## Arquivos a Modificar
 
-### Função `getUserGroups` (linhas 160-183)
+| Arquivo | Alteracao |
+|---------|-----------|
+| `src/components/reports/ReportsHeader.tsx` | Transformar botao em link condicional para admins |
+| `src/App.tsx` | Adicionar nova rota protegida `/usuarios` |
 
-**Antes:**
-```javascript
-async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
-  const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
-  console.log('[BoldAuth] Getting groups for user:', userId);
-  
-  const response = await fetch(groupsUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${systemToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    console.warn('[BoldAuth] Could not fetch user groups');
-    return [];
-  }
-  
-  const data: GroupsResponse = await response.json();
-  const groupNames = data.Groups?.map(g => g.Name) || [];
-  console.log('[BoldAuth] User groups:', groupNames);
-  
-  return groupNames;
-}
+## Detalhamento das Alteracoes
+
+### 1. ReportsHeader.tsx - Botao de Gerencia de Usuarios
+
+**Antes (linhas 57-60):**
+```jsx
+<div className="flex items-center gap-2">
+  <Button variant="ghost" size="icon" className="...">
+    <Settings className="h-5 w-5" />
+  </Button>
 ```
 
 **Depois:**
-```javascript
-async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
-  const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
-  console.log('[BoldAuth] Getting groups for user:', userId);
-  console.log('[BoldAuth] Groups URL:', groupsUrl);
-  
-  const response = await fetch(groupsUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${systemToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.warn('[BoldAuth] Could not fetch user groups:', response.status, errorText.substring(0, 200));
-    return [];
-  }
-  
-  const data = await response.json();
-  console.log('[BoldAuth] Groups response type:', typeof data);
-  console.log('[BoldAuth] Groups response keys:', Object.keys(data || {}));
-  console.log('[BoldAuth] Groups raw response:', JSON.stringify(data).substring(0, 500));
-  
-  // Handle different response formats from Bold Reports API
-  let groups: Array<{ Id?: string; Name?: string; GroupName?: string }> = [];
-  
-  if (Array.isArray(data)) {
-    groups = data;
-  } else if (data && typeof data === 'object') {
-    // Try common response wrapper properties
-    groups = data.GroupList || data.Groups || data.value || data.items || data.Result || [];
-  }
-  
-  // Extract group names, handling different property names
-  const groupNames = groups.map(g => g.Name || g.GroupName || '').filter(Boolean);
-  console.log('[BoldAuth] User groups:', groupNames);
-  
-  return groupNames;
+```jsx
+<div className="flex items-center gap-2">
+  {boldReportsInfo.isAdmin && (
+    <Button 
+      variant="ghost" 
+      size="icon" 
+      className="text-primary-foreground hover:bg-primary-foreground/10"
+      onClick={() => navigate('/usuarios')}
+      title="Gerenciar Usuários"
+    >
+      <Users className="h-5 w-5" />
+    </Button>
+  )}
+```
+
+- Icone alterado de `Settings` para `Users` (lucide-react)
+- Botao visivel apenas quando `boldReportsInfo.isAdmin === true`
+- Adiciona navegacao para `/usuarios`
+- Tooltip explicativo
+
+### 2. App.tsx - Nova Rota Protegida
+
+Adicionar rota para a pagina de gerencia dentro do grupo de rotas protegidas:
+
+```jsx
+<Route element={<ProtectedRoute />}>
+  <Route path="/" element={<Reports />} />
+  <Route path="/bold-reports" element={<Index />} />
+  <Route path="/usuarios" element={<UserManagement />} />
+</Route>
+```
+
+### 3. UserManagement.tsx - Nova Pagina
+
+Estrutura da pagina:
+
+```text
++----------------------------------------------------+
+|  ReportsHeader (title="Gerencia de Usuarios")      |
++----------------------------------------------------+
+|                                                    |
+|  +----------------------------------------------+  |
+|  |  Card: Tabela de Usuarios                    |  |
+|  |  +------------------------------------------+|  |
+|  |  | Avatar | Nome | Email | Grupos | Status  ||  |
+|  |  +------------------------------------------+|  |
+|  |  | ...    | ...  | ...   | ...    | ...     ||  |
+|  |  +------------------------------------------+|  |
+|  +----------------------------------------------+  |
+|                                                    |
++----------------------------------------------------+
+```
+
+**Funcionalidades:**
+- Listagem de todos os usuarios do Bold Reports
+- Exibicao de: Avatar, Nome Completo, Email, Grupos, Status (Ativo/Inativo)
+- Badge visual para indicar administradores
+- Loading skeleton durante carregamento
+- Estado de erro com mensagem
+
+### 4. Edge Function bold-users
+
+Nova edge function para listar usuarios do Bold Reports:
+
+**Endpoint:** `POST /bold-users`
+
+**Resposta:**
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": 16958,
+      "email": "user@example.com",
+      "displayName": "Usuario Exemplo",
+      "firstName": "Usuario",
+      "lastName": "Exemplo",
+      "isActive": true,
+      "groups": ["System Administrator"]
+    }
+  ]
 }
 ```
 
-## Mudanças Principais
+A funcao reutiliza a logica de autenticacao existente em `bold-auth`:
+- Obtem token do sistema via Embed Secret
+- Lista todos os usuarios
+- Para cada usuario, busca seus grupos
+- Retorna lista completa com grupos
 
-1. **Logging da URL**: Adiciona log da URL de grupos para debug
-2. **Logging detalhado da resposta**: Mostra tipo, chaves e conteúdo raw
-3. **Parsing flexível**: Verifica múltiplas propriedades possíveis (`GroupList`, `Groups`, `value`, etc.)
-4. **Múltiplos nomes de campo**: Considera tanto `Name` quanto `GroupName`
+## Interface Visual da Tabela
 
-## Resultado Esperado
+| Coluna | Descricao | Formatacao |
+|--------|-----------|------------|
+| Usuario | Avatar + Nome | Avatar com iniciais, nome em negrito |
+| Email | Endereco de email | Texto simples |
+| Grupos | Lista de grupos | Badges separados |
+| Status | Ativo/Inativo | Badge verde ou cinza |
+| Admin | Indicador | Badge "Admin" se for administrador |
 
-Após a correção, os logs mostrarão a estrutura exata da resposta da API, permitindo identificar onde os grupos estão sendo retornados. Se estiverem em `GroupList` (como os usuários em `UserList`), o novo código irá parseá-los corretamente.
+## Seguranca
 
-## Implantação
+1. **Frontend**: Botao so aparece se `boldReportsInfo.isAdmin === true`
+2. **Backend**: A Edge function usa autenticacao do sistema Bold Reports
+3. **Rota**: Protegida pelo `ProtectedRoute` (requer login)
 
-1. Atualizar a edge function `bold-auth`
-2. Re-deploy automático
-3. Testar login novamente para verificar os logs
+A verificacao de admin eh feita no frontend baseada no retorno da API Bold Reports.
+Se um usuario nao-admin tentar acessar `/usuarios` diretamente, a pagina ainda
+carregara, mas ele nao tera chegado la pelo botao (que estara invisivel).
+Uma verificacao adicional pode ser adicionada na pagina para redirecionar nao-admins.
+
+## Proximos Passos (Fora deste Escopo)
+
+- Edicao de permissoes de usuarios
+- Adicao/remocao de usuarios de grupos
+- Sincronizacao bidirecional com Bold Reports
