@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Package, ClipboardList, Search, Loader2 } from 'lucide-react';
+import { Package, ClipboardList, Search, Loader2, ShieldAlert, LucideIcon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportsHeader } from '@/components/reports/ReportsHeader';
 import { FiltersSidebar } from '@/components/reports/FiltersSidebar';
@@ -11,9 +11,45 @@ import { ExportDropdown } from '@/components/reports/ExportDropdown';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useReportsData } from '@/hooks/useReportsData';
+import { useReportPermissions, REPORT_IDS } from '@/hooks/useReportPermissions';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import type { ReportType, ReportDataItem, ExportFormat } from '@/types/reports';
+
+// Definição das abas de relatórios com seus IDs
+interface ReportTab {
+  id: ReportType;
+  reportId: string;
+  label: string;
+  shortLabel: string;
+  icon: LucideIcon;
+}
+
+const REPORT_TABS: ReportTab[] = [
+  { 
+    id: 'bens-necessidade', 
+    reportId: REPORT_IDS.BENS_NECESSIDADE, 
+    label: 'Bens por Necessidade', 
+    shortLabel: 'Bens',
+    icon: Package 
+  },
+  { 
+    id: 'inventario', 
+    reportId: REPORT_IDS.INVENTARIO, 
+    label: 'Inventário', 
+    shortLabel: 'Inventário',
+    icon: ClipboardList 
+  },
+  { 
+    id: 'auditoria', 
+    reportId: REPORT_IDS.AUDITORIA, 
+    label: 'Auditoria', 
+    shortLabel: 'Auditoria',
+    icon: Search 
+  },
+];
 
 // Função para formatar datas vindas do CSV
 const formatDateValue = (value: unknown): React.ReactNode => {
@@ -207,8 +243,44 @@ const getColumns = (reportType: ReportType): Column<ReportDataItem>[] => {
 };
 
 export function ReportsDashboard() {
-  const [activeTab, setActiveTab] = useState<ReportType>('bens-necessidade');
+  const { boldReportsInfo, boldSyncing } = useAuth();
+  const { 
+    loading: permissionsLoading, 
+    canAccessReport, 
+    accessibleReports 
+  } = useReportPermissions();
+  
+  // Filtrar abas acessíveis
+  const accessibleTabs = useMemo(() => {
+    // Se está carregando permissões ou sincronizando Bold, mostrar skeleton
+    if (permissionsLoading || boldSyncing) {
+      return [];
+    }
+    return REPORT_TABS.filter(tab => canAccessReport(tab.reportId));
+  }, [permissionsLoading, boldSyncing, canAccessReport]);
+
+  // Determinar aba inicial baseada nas permissões
+  const defaultTab = useMemo(() => {
+    if (accessibleTabs.length > 0) {
+      return accessibleTabs[0].id;
+    }
+    return 'bens-necessidade';
+  }, [accessibleTabs]);
+
+  const [activeTab, setActiveTab] = useState<ReportType>(defaultTab);
   const [currentFilters, setCurrentFilters] = useState<unknown>(null);
+  
+  // Atualizar aba ativa se a atual não estiver mais acessível
+  useEffect(() => {
+    if (accessibleTabs.length > 0) {
+      const currentTabAccessible = accessibleTabs.some(tab => tab.id === activeTab);
+      if (!currentTabAccessible) {
+        setActiveTab(accessibleTabs[0].id);
+        clearData();
+        setCurrentFilters(null);
+      }
+    }
+  }, [accessibleTabs, activeTab]);
   
   const { 
     data, 
@@ -308,120 +380,116 @@ export function ReportsDashboard() {
   // Use colunas dinâmicas do CSV ou fallback para colunas estáticas
   const columns = dynamicColumns.length > 0 ? dynamicColumns : getColumns(activeTab);
 
+  // Loading state para permissões
+  const isLoadingPermissions = permissionsLoading || boldSyncing;
+
+  // Renderizar skeleton das tabs enquanto carrega
+  const renderTabsSkeleton = () => (
+    <div className="flex flex-wrap w-full sm:w-auto gap-1">
+      <Skeleton className="h-10 w-24 sm:w-40" />
+      <Skeleton className="h-10 w-24 sm:w-32" />
+      <Skeleton className="h-10 w-24 sm:w-28" />
+    </div>
+  );
+
+  // Renderizar mensagem quando não há relatórios acessíveis
+  const renderNoAccessMessage = () => (
+    <div className="flex-1 flex items-center justify-center">
+      <Card className="p-8 max-w-md text-center">
+        <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Acesso Restrito</h3>
+        <p className="text-muted-foreground">
+          Você não possui permissão para visualizar nenhum relatório. 
+          Entre em contato com o administrador para solicitar acesso.
+        </p>
+      </Card>
+    </div>
+  );
+
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <ReportsHeader />
 
       <main className="flex-1 container max-w-7xl mx-auto px-4 py-6 overflow-hidden flex flex-col min-h-0">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
-            <TabsList id="tabs-list-reports" className="flex flex-wrap w-full sm:w-auto gap-1">
-              <TabsTrigger 
-                value="bens-necessidade" 
-                id="tab-bens-necessidade"
-                className="gap-1.5 flex-1 sm:flex-none min-w-0"
-              >
-                <Package className="h-4 w-4 hidden sm:inline flex-shrink-0" />
-                <span className="hidden sm:inline text-sm truncate">Bens por Necessidade</span>
-                <span className="sm:hidden text-xs">Bens</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="inventario" 
-                id="tab-inventario"
-                className="gap-1.5 flex-1 sm:flex-none min-w-0"
-              >
-                <ClipboardList className="h-4 w-4 hidden sm:inline flex-shrink-0" />
-                <span className="hidden sm:inline text-sm truncate">Inventário</span>
-                <span className="sm:hidden text-xs">Inventário</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="auditoria" 
-                id="tab-auditoria"
-                className="gap-1.5 flex-1 sm:flex-none min-w-0"
-              >
-                <Search className="h-4 w-4 hidden sm:inline flex-shrink-0" />
-                <span className="hidden sm:inline text-sm truncate">Auditoria</span>
-                <span className="sm:hidden text-xs">Auditoria</span>
-              </TabsTrigger>
-            </TabsList>
+        {/* Se não há relatórios acessíveis e não está carregando */}
+        {!isLoadingPermissions && accessibleTabs.length === 0 ? (
+          renderNoAccessMessage()
+        ) : (
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
+              {isLoadingPermissions ? (
+                renderTabsSkeleton()
+              ) : (
+                <TabsList id="tabs-list-reports" className="flex flex-wrap w-full sm:w-auto gap-1">
+                  {accessibleTabs.map((tab) => (
+                    <TabsTrigger 
+                      key={tab.id}
+                      value={tab.id} 
+                      id={`tab-${tab.id}`}
+                      className="gap-1.5 flex-1 sm:flex-none min-w-0"
+                    >
+                      <tab.icon className="h-4 w-4 hidden sm:inline flex-shrink-0" />
+                      <span className="hidden sm:inline text-sm truncate">{tab.label}</span>
+                      <span className="sm:hidden text-xs">{tab.shortLabel}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              )}
 
-            <div className="flex items-center gap-2">
-              <MobileFiltersDrawer
-                reportType={activeTab}
-                onSubmit={handleFiltersSubmit}
-                loading={loading}
-              />
-              <ExportDropdown 
-                onExport={handleExport} 
-                disabled={data.length === 0}
-                loading={loading}
-                exporting={exporting}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 mt-6 overflow-hidden">
-            {/* Desktop Filters Sidebar */}
-            <div className="hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0 min-h-0 max-h-full">
-              <FiltersSidebar
-                reportType={activeTab}
-                onSubmit={handleFiltersSubmit}
-                loading={loading}
-              />
+              <div className="flex items-center gap-2">
+                <MobileFiltersDrawer
+                  reportType={activeTab}
+                  onSubmit={handleFiltersSubmit}
+                  loading={loading}
+                />
+                <ExportDropdown 
+                  onExport={handleExport} 
+                  disabled={data.length === 0}
+                  loading={loading}
+                  exporting={exporting}
+                />
+              </div>
             </div>
 
-            {/* Data Table Area */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-auto">
-              <TabsContent value="bens-necessidade" className="mt-0 h-full">
-                <DataTable
-                  data={data}
-                  columns={columns}
+            <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 mt-6 overflow-hidden">
+              {/* Desktop Filters Sidebar */}
+              <div className="hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0 min-h-0 max-h-full">
+                <FiltersSidebar
+                  reportType={activeTab}
+                  onSubmit={handleFiltersSubmit}
                   loading={loading}
-                  error={error}
-                  pageIndex={pagination.pageIndex}
-                  pageSize={pagination.pageSize}
-                  totalCount={pagination.totalCount}
-                  onPageChange={handlePageChange}
-                  emptyMessage="Clique em 'Gerar' para visualizar os bens"
-                  noResultsMessage="Nenhum bem encontrado para os filtros aplicados"
-                  hasSearched={hasSearched}
                 />
-              </TabsContent>
+              </div>
 
-              <TabsContent value="inventario" className="mt-0 h-full">
-                <DataTable
-                  data={data}
-                  columns={columns}
-                  loading={loading}
-                  error={error}
-                  pageIndex={pagination.pageIndex}
-                  pageSize={pagination.pageSize}
-                  totalCount={pagination.totalCount}
-                  onPageChange={handlePageChange}
-                  emptyMessage="Clique em 'Gerar' para visualizar os inventários"
-                  noResultsMessage="Nenhum inventário encontrado para os filtros aplicados"
-                  hasSearched={hasSearched}
-                />
-              </TabsContent>
-
-              <TabsContent value="auditoria" className="mt-0 h-full">
-                <DataTable
-                  data={data}
-                  columns={columns}
-                  loading={loading}
-                  error={error}
-                  pageIndex={pagination.pageIndex}
-                  pageSize={pagination.pageSize}
-                  totalCount={pagination.totalCount}
-                  onPageChange={handlePageChange}
-                  emptyMessage="Clique em 'Gerar' para visualizar as auditorias"
-                  noResultsMessage="Nenhuma auditoria encontrada para os filtros aplicados"
-                  hasSearched={hasSearched}
-                />
-              </TabsContent>
+              {/* Data Table Area */}
+              <div className="flex-1 min-w-0 min-h-0 overflow-auto">
+                {accessibleTabs.map((tab) => (
+                  <TabsContent key={tab.id} value={tab.id} className="mt-0 h-full">
+                    <DataTable
+                      data={data}
+                      columns={columns}
+                      loading={loading}
+                      error={error}
+                      pageIndex={pagination.pageIndex}
+                      pageSize={pagination.pageSize}
+                      totalCount={pagination.totalCount}
+                      onPageChange={handlePageChange}
+                      emptyMessage={`Clique em 'Gerar' para visualizar ${
+                        tab.id === 'bens-necessidade' ? 'os bens' : 
+                        tab.id === 'inventario' ? 'os inventários' : 'as auditorias'
+                      }`}
+                      noResultsMessage={`Nenhum ${
+                        tab.id === 'bens-necessidade' ? 'bem' : 
+                        tab.id === 'inventario' ? 'inventário' : 'auditoria'
+                      } encontrado para os filtros aplicados`}
+                      hasSearched={hasSearched}
+                    />
+                  </TabsContent>
+                ))}
+              </div>
             </div>
-          </div>
-        </Tabs>
+          </Tabs>
+        )}
       </main>
 
       {/* Overlay de exportação */}
