@@ -1,323 +1,194 @@
 
-# Plano: Sistema de Cadastro e Login de Usuários
+# Plano: Redesign das Telas de Login e Cadastro
 
-## Visao Geral
+## Analise da Imagem de Referencia
 
-Implementar um sistema completo de autenticacao utilizando Supabase Auth integrado com Lovable Cloud, incluindo:
-- Paginas de Login e Cadastro
-- Gerenciamento de sessao
-- Tabela de perfis de usuarios
-- Sistema de roles para controle de acesso
-- Protecao de rotas
+A imagem mostra um design com os seguintes elementos:
+- Fundo com gradiente verde (do topo mais escuro para baixo mais claro)
+- Logo posicionado no canto superior esquerdo (fora do card)
+- Card central com fundo azul escuro (#132040) e bordas arredondadas
+- Campos de input com fundo azul escuro/transparente com borda sutil
+- Botao verde (#247d5b ou #215c47)
+- Textos em branco sobre o card azul
+- Links na parte inferior do card
 
----
-
-## Arquitetura do Sistema
-
-```text
-+------------------+     +-------------------+     +------------------+
-|                  |     |                   |     |                  |
-|  Pagina Login    +---->+  Supabase Auth    +---->+  auth.users      |
-|  Pagina Cadastro |     |                   |     |  (gerenciado)    |
-|                  |     +--------+----------+     +--------+---------+
-+------------------+              |                         |
-                                  |  Trigger                |
-                                  v                         v
-                         +--------+----------+     +--------+---------+
-                         |                   |     |                  |
-                         |  profiles         |<----+  user_roles      |
-                         |  (dados usuario)  |     |  (permissoes)    |
-                         |                   |     |                  |
-                         +-------------------+     +------------------+
-```
+Cores fornecidas:
+- `#247d5b` - Verde para botoes e elementos de destaque
+- `#132040` - Azul escuro para o fundo do card
+- `#215c47` - Nova cor principal do sistema
 
 ---
 
-## Componentes Necessarios
+## Alteracoes Necessarias
 
-### 1. Banco de Dados (Migracao SQL)
+### 1. Atualizar Cor Principal do Sistema
 
-#### Tabela `profiles`
-Armazena informacoes adicionais do usuario:
+**Arquivo:** `src/index.css`
 
-```sql
-CREATE TABLE public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT,
-  email TEXT,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+Converter `#215c47` para HSL e atualizar a variavel `--primary`:
+- `#215c47` em HSL: aproximadamente `156 48% 24%`
 
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+### 2. Criar Estilos para Telas de Autenticacao
 
--- Usuarios podem ver seu proprio perfil
-CREATE POLICY "Users can view own profile"
-  ON public.profiles FOR SELECT
-  TO authenticated
-  USING (auth.uid() = id);
+**Arquivo:** `src/index.css`
 
--- Usuarios podem atualizar seu proprio perfil
-CREATE POLICY "Users can update own profile"
-  ON public.profiles FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = id);
+Adicionar novas classes CSS utilitarias:
+```css
+/* Cores especificas para autenticacao */
+--auth-card-bg: 220 52% 16%;        /* #132040 */
+--auth-button: 155 53% 31%;          /* #247d5b */
+--auth-gradient-start: 155 48% 24%;  /* #215c47 */
+--auth-gradient-end: 160 35% 65%;    /* Verde claro */
 ```
 
-#### Tabela `user_roles` (Sistema de Permissoes)
+Classes de gradiente e estilo:
+```css
+.auth-gradient {
+  background: linear-gradient(180deg, #215c47 0%, #7ab5a0 50%, #c4d9d2 100%);
+}
 
-```sql
-CREATE TYPE public.app_role AS ENUM ('admin', 'editor', 'viewer');
+.auth-card {
+  background-color: #132040;
+}
 
-CREATE TABLE public.user_roles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  role app_role NOT NULL DEFAULT 'viewer',
-  UNIQUE (user_id, role)
-);
-
-ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
-
--- Funcao segura para verificar roles
-CREATE OR REPLACE FUNCTION public.has_role(_user_id UUID, _role app_role)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles
-    WHERE user_id = _user_id
-      AND role = _role
-  )
-$$;
-
--- Admins podem ver todos os roles
-CREATE POLICY "Admins can view all roles"
-  ON public.user_roles FOR SELECT
-  TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'));
-
--- Usuarios podem ver seu proprio role
-CREATE POLICY "Users can view own role"
-  ON public.user_roles FOR SELECT
-  TO authenticated
-  USING (user_id = auth.uid());
-```
-
-#### Trigger para Criar Perfil Automaticamente
-
-```sql
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Criar perfil
-  INSERT INTO public.profiles (id, full_name, email)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    NEW.email
-  );
-  
-  -- Atribuir role padrao (viewer)
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'viewer');
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_user();
-```
-
----
-
-### 2. Contexto de Autenticacao
-
-#### Arquivo: `src/contexts/AuthContext.tsx`
-
-Gerencia o estado de autenticacao em toda a aplicacao:
-
-```typescript
-// Funcionalidades:
-- Listener onAuthStateChange (antes de getSession)
-- Estado do usuario atual
-- Funcoes: signIn, signUp, signOut
-- Loading state durante verificacao inicial
-- Perfil e role do usuario
-```
-
----
-
-### 3. Hook de Autenticacao
-
-#### Arquivo: `src/hooks/useAuth.ts`
-
-Hook conveniente para acessar o contexto:
-
-```typescript
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+.auth-input {
+  background-color: rgba(19, 32, 64, 0.8);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 ```
 
 ---
 
-### 4. Paginas de Autenticacao
+### 3. Redesign da Pagina de Login
 
-#### Arquivo: `src/pages/Login.tsx`
+**Arquivo:** `src/pages/Login.tsx`
 
-- Formulario com email e senha
-- Link para cadastro
-- Opcao "Esqueci minha senha"
-- Validacao com Zod
-- Feedback visual (loading, erros)
+Alteracoes visuais:
+1. **Container principal:**
+   - Remover `bg-background`
+   - Adicionar classe `auth-gradient` para fundo gradiente
+   - Logo posicionado no canto superior esquerdo (absolute)
 
-#### Arquivo: `src/pages/Cadastro.tsx`
+2. **Card:**
+   - Trocar Card padrao por `div` com classe `auth-card`
+   - Fundo azul escuro (#132040)
+   - Bordas arredondadas maiores (`rounded-xl`)
+   - Remover logo de dentro do card
 
-- Formulario com nome, email, senha, confirmacao
-- Validacao de forca da senha
-- Link para login
-- Mensagem de confirmacao de email
+3. **Titulos e textos:**
+   - Titulo "Login" em branco, com sublinhado verde
+   - Subtitulo "Bem-vindo! Por favor, entre com seus dados." em cinza claro
 
----
+4. **Inputs:**
+   - Fundo semi-transparente azul escuro
+   - Borda sutil cinza/branca
+   - Texto e placeholder em branco/cinza claro
+   - Labels em branco
 
-### 5. Componente de Rota Protegida
+5. **Botao:**
+   - Fundo verde (#215c47)
+   - Texto branco
+   - Bordas arredondadas
 
-#### Arquivo: `src/components/ProtectedRoute.tsx`
+6. **Links:**
+   - "Primeiro acesso" (cadastro) a esquerda
+   - "Esqueceu a senha?" a direita (futuro)
 
-```typescript
-// Funcionalidades:
-- Verifica se usuario esta autenticado
-- Redireciona para /login se nao autenticado
-- Mostra loading enquanto verifica sessao
-- Opcional: verificar role minimo
+Layout proposto:
+```
++------------------------------------------+
+| [Logo]                                   |
+|                                          |
+|         +------------------------+       |
+|         |      Login             |       |
+|         |      ------            |       |
+|         |  Bem-vindo!            |       |
+|         |                        |       |
+|         |  Email                 |       |
+|         |  [__________________]  |       |
+|         |                        |       |
+|         |  Senha                 |       |
+|         |  [________________ 👁] |       |
+|         |                        |       |
+|         |  Primeiro    Esqueceu? |       |
+|         |  acesso                |       |
+|         |                        |       |
+|         |  [     Entrar       ]  |       |
+|         +------------------------+       |
+|                                          |
++------------------------------------------+
 ```
 
 ---
 
-### 6. Atualizacao do Roteamento
+### 4. Redesign da Pagina de Cadastro
 
-#### Arquivo: `src/App.tsx`
+**Arquivo:** `src/pages/Cadastro.tsx`
 
-```typescript
-<Routes>
-  <Route path="/login" element={<Login />} />
-  <Route path="/cadastro" element={<Cadastro />} />
-  
-  {/* Rotas Protegidas */}
-  <Route element={<ProtectedRoute />}>
-    <Route path="/" element={<Reports />} />
-    <Route path="/bold-reports" element={<Index />} />
-  </Route>
-  
-  <Route path="*" element={<NotFound />} />
-</Routes>
+Mesma estrutura visual do Login, com adaptacoes:
+
+1. **Container e fundo:**
+   - Mesmo gradiente verde
+
+2. **Card:**
+   - Mesmo estilo azul escuro
+   - Titulo "Criar conta" com sublinhado verde
+
+3. **Campos:**
+   - Nome completo
+   - Email
+   - Senha (com indicadores de requisitos em verde/cinza)
+   - Confirmar senha
+
+4. **Links:**
+   - "Ja tem uma conta? Faca login"
+
+5. **Tela de sucesso:**
+   - Manter dentro do mesmo estilo visual
+   - Icone de check em verde
+   - Fundo gradiente
+
+---
+
+### 5. Atualizar Componente Input (opcional)
+
+**Arquivo:** `src/components/ui/input.tsx`
+
+Adicionar variante para inputs de autenticacao:
+```tsx
+// Variante auth para inputs escuros
+const authVariant = "bg-[#132040]/80 border-white/20 text-white placeholder:text-white/50"
 ```
 
 ---
 
-### 7. Atualizacao do Header
-
-#### Arquivo: `src/components/reports/ReportsHeader.tsx`
-
-Adicionar:
-- Nome do usuario logado
-- Menu dropdown com opcoes:
-  - Ver Perfil
-  - Configuracoes
-  - Sair
-
----
-
-## Arquivos a Criar
-
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/contexts/AuthContext.tsx` | Contexto de autenticacao |
-| `src/hooks/useAuth.ts` | Hook para acesso ao contexto |
-| `src/pages/Login.tsx` | Pagina de login |
-| `src/pages/Cadastro.tsx` | Pagina de cadastro |
-| `src/components/ProtectedRoute.tsx` | Wrapper de rota protegida |
-
-## Arquivos a Modificar
+## Resumo de Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/App.tsx` | Adicionar AuthProvider e novas rotas |
-| `src/components/reports/ReportsHeader.tsx` | Adicionar menu do usuario |
-| Migracao SQL | Criar tabelas profiles e user_roles |
+| `src/index.css` | Atualizar cor primaria para #215c47, adicionar classes auth-* |
+| `src/pages/Login.tsx` | Redesign completo seguindo o mockup |
+| `src/pages/Cadastro.tsx` | Redesign completo seguindo o mesmo estilo |
 
 ---
 
-## Fluxo de Usuario
+## Cores em HSL para o CSS
 
-```text
-1. Usuario acessa qualquer rota
-   |
-   v
-2. ProtectedRoute verifica sessao
-   |
-   +---> Nao autenticado --> Redireciona para /login
-   |
-   v
-3. Usuario esta na pagina de Login
-   |
-   +---> Clica "Cadastrar" --> Vai para /cadastro
-   |
-   v
-4. Usuario preenche formulario e envia
-   |
-   v
-5. Supabase Auth cria usuario em auth.users
-   |
-   v
-6. Trigger cria registro em profiles e user_roles
-   |
-   v
-7. Usuario recebe email de confirmacao (opcional)
-   |
-   v
-8. Usuario faz login com email/senha
-   |
-   v
-9. onAuthStateChange detecta sessao
-   |
-   v
-10. ProtectedRoute libera acesso
-    |
-    v
-11. Usuario ve o dashboard de relatorios
-```
+| Cor Hex | HSL | Uso |
+|---------|-----|-----|
+| `#215c47` | `156 48% 24%` | Cor primaria do sistema |
+| `#132040` | `220 52% 16%` | Fundo do card de auth |
+| `#247d5b` | `155 53% 31%` | Botoes e destaques |
 
 ---
 
-## Consideracoes de Seguranca
+## Resultado Esperado
 
-1. **Senhas**: Validacao minima de 8 caracteres, com numeros e letras
-2. **RLS**: Todas as tabelas com Row Level Security ativado
-3. **Roles em tabela separada**: Evita ataques de escalacao de privilegios
-4. **SECURITY DEFINER**: Funcao `has_role` executa com privilegios elevados de forma segura
-5. **Confirmacao de email**: Pode ser habilitada/desabilitada conforme necessidade
-
----
-
-## Proximos Passos Opcionais
-
-Apos a implementacao base, podem ser adicionados:
-
-- Recuperacao de senha (esqueci minha senha)
-- Login social (Google via Lovable Cloud)
-- Pagina de perfil do usuario
-- Painel administrativo para gerenciar roles
-- Logs de auditoria de acesso
+1. Telas de Login e Cadastro com visual moderno e profissional
+2. Gradiente verde suave no fundo
+3. Card central com fundo azul escuro
+4. Inputs com estilo escuro e bordas sutis
+5. Botoes verdes com boa visibilidade
+6. Logo posicionado no canto superior esquerdo
+7. Toda a aplicacao usando a nova cor primaria #215c47
