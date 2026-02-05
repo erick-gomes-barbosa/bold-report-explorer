@@ -60,7 +60,7 @@ export function ReportsHeader({
           </div>
 
           <div className="flex items-center gap-2">
-            {boldReportsInfo.isAdmin && (
+            {boldReportsInfo.synced && boldReportsInfo.isAdmin && (
               <Button 
                 variant="ghost" 
                 size="icon" 
