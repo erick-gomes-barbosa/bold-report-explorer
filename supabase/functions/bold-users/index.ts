@@ -127,30 +127,48 @@ async function getAllUsers(systemToken: string): Promise<UserResponse[]> {
 async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
   const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
   
-  const response = await fetch(groupsUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${systemToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    console.warn('[BoldUsers] Could not fetch groups for user:', userId);
+  try {
+    const response = await fetch(groupsUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${systemToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.warn('[BoldUsers] Could not fetch groups for user:', userId, 'status:', response.status);
+      return [];
+    }
+    
+    // Check if response has content before parsing
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      console.warn('[BoldUsers] Empty response for groups, user:', userId);
+      return [];
+    }
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.warn('[BoldUsers] Invalid JSON for groups, user:', userId, 'response:', text.substring(0, 100));
+      return [];
+    }
+    
+    let groups: Array<{ Id?: string; Name?: string; GroupName?: string }> = [];
+    
+    if (Array.isArray(data)) {
+      groups = data;
+    } else if (data && typeof data === 'object') {
+      groups = data.GroupList || data.Groups || data.value || data.items || data.Result || [];
+    }
+    
+    return groups.map(g => g.Name || g.GroupName || '').filter(Boolean);
+  } catch (error) {
+    console.warn('[BoldUsers] Error fetching groups for user:', userId, error);
     return [];
   }
-  
-  const data = await response.json();
-  
-  let groups: Array<{ Id?: string; Name?: string; GroupName?: string }> = [];
-  
-  if (Array.isArray(data)) {
-    groups = data;
-  } else if (data && typeof data === 'object') {
-    groups = data.GroupList || data.Groups || data.value || data.items || data.Result || [];
-  }
-  
-  return groups.map(g => g.Name || g.GroupName || '').filter(Boolean);
 }
 
 serve(async (req) => {
