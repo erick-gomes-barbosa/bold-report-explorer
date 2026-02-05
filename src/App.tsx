@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Reports from "./pages/Reports";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
+import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => {
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<Reports />} />
                 <Route path="/bold-reports" element={<Index />} />
+                <Route path="/usuarios" element={<UserManagement />} />
               </Route>
 
               {/* Catch-all route */}

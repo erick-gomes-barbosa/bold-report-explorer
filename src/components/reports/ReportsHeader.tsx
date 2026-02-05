@@ -1,4 +1,5 @@
-import { Settings, LogOut, User, ChevronDown, Shield, ShieldCheck } from 'lucide-react';
+import { Users, LogOut, User, ChevronDown, Shield, ShieldCheck, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ export function ReportsHeader({
   subtitle = "Gestão e Controle Patrimonial"
 }: ReportsHeaderProps) {
   const { user, profile, signOut, boldReportsInfo } = useAuth();
+  const navigate = useNavigate();
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'U';
@@ -55,9 +57,17 @@ export function ReportsHeader({
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10">
-              <Settings className="h-5 w-5" />
-            </Button>
+            {boldReportsInfo.isAdmin && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => navigate('/usuarios')}
+                title="Gerenciar Usuários"
+              >
+                <Users className="h-5 w-5" />
+              </Button>
+            )}
 
             {user && (
               <DropdownMenu>
