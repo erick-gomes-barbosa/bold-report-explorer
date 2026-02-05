@@ -95,6 +95,11 @@ interface GetItemsPayload {
   itemType: 'reports' | 'categories' | 'datasources' | 'datasets' | 'schedules';
 }
 
+interface GetPermissionsPayload {
+  action: 'getPermissions';
+  userId: number;
+}
+
 type RequestPayload = 
   | CreateUserPayload 
   | UpdateUserPayload 
@@ -107,7 +112,8 @@ type RequestPayload =
   | UpdatePermissionPayload
   | AddUserToGroupsPayload
   | RemoveUserFromGroupsPayload
-  | GetItemsPayload;
+  | GetItemsPayload
+  | GetPermissionsPayload;
 
 // Generate HMACSHA256 signature for Embed Secret authentication
 async function generateEmbedSignature(message: string, secretKey: string): Promise<string> {
@@ -663,6 +669,22 @@ Deno.serve(async (req: Request) => {
     // GET ITEMS (via POST)
     if (payload.action === 'getItems') {
       const result = await getBoldItems(token, payload.itemType);
+      return new Response(
+        JSON.stringify(result),
+        { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // GET PERMISSIONS (via POST for consistency)
+    if (payload.action === 'getPermissions') {
+      const { userId } = payload as GetPermissionsPayload;
+      if (!userId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'userId é obrigatório' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const result = await getBoldUserPermissions(token, userId);
       return new Response(
         JSON.stringify(result),
         { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
