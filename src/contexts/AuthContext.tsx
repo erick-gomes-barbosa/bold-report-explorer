@@ -18,7 +18,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  syncWithBoldReports: (email: string) => Promise<void>;
+  syncWithBoldReports: (email: string) => Promise<BoldReportsInfo>;
   clearPasswordResetFlag: () => void;
 }
 
@@ -201,7 +201,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Sync with Bold Reports - call edge function to look up user permissions
-  const syncWithBoldReports = async (email: string) => {
+  // Returns the BoldReportsInfo for immediate use (avoids race conditions)
+  const syncWithBoldReports = async (email: string): Promise<BoldReportsInfo> => {
     console.log('[AuthContext] Syncing with Bold Reports for:', email);
     
     try {
@@ -211,12 +212,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('[AuthContext] Bold Reports sync error:', error);
-        setBoldReportsInfo({
+        const errorInfo: BoldReportsInfo = {
           ...defaultBoldReportsInfo,
           synced: false,
           syncError: error.message,
-        });
-        return;
+        };
+        setBoldReportsInfo(errorInfo);
+        return errorInfo;
       }
 
       if (data?.success) {
@@ -225,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           userId: data.userId, 
           isAdmin: data.isAdmin 
         });
-        setBoldReportsInfo({
+        const successInfo: BoldReportsInfo = {
           token: data.boldToken || null,
           userId: data.userId || null,
           email: data.email || null,
@@ -233,22 +235,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           synced: data.synced || false,
           syncError: data.synced ? null : (data.message || null),
           groups: data.groups || [],
-        });
+        };
+        setBoldReportsInfo(successInfo);
+        return successInfo;
       } else {
         console.warn('[AuthContext] Bold Reports sync failed:', data?.error);
-        setBoldReportsInfo({
+        const failedInfo: BoldReportsInfo = {
           ...defaultBoldReportsInfo,
           synced: false,
           syncError: data?.error || 'Falha na sincronização',
-        });
+        };
+        setBoldReportsInfo(failedInfo);
+        return failedInfo;
       }
     } catch (err) {
       console.error('[AuthContext] Bold Reports sync exception:', err);
-      setBoldReportsInfo({
+      const exceptionInfo: BoldReportsInfo = {
         ...defaultBoldReportsInfo,
         synced: false,
         syncError: err instanceof Error ? err.message : 'Erro inesperado',
-      });
+      };
+      setBoldReportsInfo(exceptionInfo);
+      return exceptionInfo;
     }
   };
 

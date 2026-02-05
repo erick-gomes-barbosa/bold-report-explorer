@@ -50,16 +50,19 @@ export default function Login() {
       }
 
       // Sync with Bold Reports after successful Supabase login
-      // Await to ensure isAdmin is updated before navigation
-      await syncWithBoldReports(data.email);
+      // syncWithBoldReports now returns the result directly to avoid race conditions
+      const boldInfo = await syncWithBoldReports(data.email);
+      console.log('[Login] Bold Reports sync result:', { 
+        synced: boldInfo.synced, 
+        isAdmin: boldInfo.isAdmin 
+      });
 
       toast({
         title: 'Bem-vindo!',
         description: 'Login realizado com sucesso.',
       });
 
-      // Check if user needs password reset after successful login
-      // We need to check the profile directly since state might not be updated yet
+      // Navigate to home - the boldReportsInfo state is now updated
       navigate('/');
     } catch (error) {
       toast({
