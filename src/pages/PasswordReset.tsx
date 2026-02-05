@@ -32,7 +32,7 @@ export default function PasswordReset() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, profile } = useAuth();
+  const { user, signOut } = useAuth();
 
   const {
     register,
@@ -78,10 +78,11 @@ export default function PasswordReset() {
 
       toast({
         title: 'Senha atualizada',
-        description: 'Sua nova senha foi definida com sucesso.',
+        description: 'Faça login novamente com sua nova senha.',
       });
 
-      navigate('/');
+      await signOut();
+      navigate('/login');
     } catch (error) {
       console.error('Error resetting password:', error);
       toast({
