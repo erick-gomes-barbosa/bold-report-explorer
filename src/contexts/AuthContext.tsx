@@ -12,11 +12,13 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   loading: boolean;
+  needsPasswordReset: boolean;
   boldReportsInfo: BoldReportsInfo;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   syncWithBoldReports: (email: string) => Promise<void>;
+  clearPasswordResetFlag: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
   const [boldReportsInfo, setBoldReportsInfo] = useState<BoldReportsInfo>(defaultBoldReportsInfo);
 
   // Fetch profile and role for a user
@@ -41,6 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileData && !profileError) {
         setProfile(profileData);
+        // Check if user needs password reset
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const needsReset = (profileData as any).needs_password_reset === true;
+        setNeedsPasswordReset(needsReset);
       }
 
       // Fetch role
@@ -129,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setProfile(null);
           setRole(null);
+          setNeedsPasswordReset(false);
           setBoldReportsInfo(defaultBoldReportsInfo);
         }
 
@@ -237,7 +245,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setProfile(null);
     setRole(null);
+    setNeedsPasswordReset(false);
     setBoldReportsInfo(defaultBoldReportsInfo);
+  };
+
+  const clearPasswordResetFlag = () => {
+    setNeedsPasswordReset(false);
   };
 
   return (
@@ -248,11 +261,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         loading,
+        needsPasswordReset,
         boldReportsInfo,
         signIn,
         signUp,
         signOut,
         syncWithBoldReports,
+        clearPasswordResetFlag,
       }}
     >
       {children}

@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ requiredRole }: ProtectedRouteProps) {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, needsPasswordReset } = useAuth();
   const location = useLocation();
 
   // Show loading state while checking authentication
@@ -25,6 +25,11 @@ export function ProtectedRoute({ requiredRole }: ProtectedRouteProps) {
   // Redirect to login if not authenticated
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Redirect to password reset if needed (except if already on that page)
+  if (needsPasswordReset && location.pathname !== '/trocar-senha') {
+    return <Navigate to="/trocar-senha" replace />;
   }
 
   // Check for required role

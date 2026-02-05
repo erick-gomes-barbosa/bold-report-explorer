@@ -7,6 +7,7 @@ export interface Profile {
   avatar_url: string | null;
   created_at: string | null;
   updated_at: string | null;
+  needs_password_reset?: boolean | null;
 }
 
 export interface UserRole {
@@ -27,6 +28,7 @@ export interface ExternalDatabase {
           avatar_url?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
+          needs_password_reset?: boolean | null;
         };
         Update: {
           id?: string;
@@ -35,6 +37,7 @@ export interface ExternalDatabase {
           avatar_url?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
+          needs_password_reset?: boolean | null;
         };
         Relationships: [];
       };

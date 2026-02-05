@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReportsHeader } from '@/components/reports/ReportsHeader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,6 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, ShieldCheck, Users } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { UserActionsToolbar } from '@/components/users/UserActionsToolbar';
+import { AddUserDialog } from '@/components/users/AddUserDialog';
+import { EditUserDialog } from '@/components/users/EditUserDialog';
+import { DeleteUserDialog } from '@/components/users/DeleteUserDialog';
+import { PermissionsDialog } from '@/components/users/PermissionsDialog';
+import { cn } from '@/lib/utils';
 
 interface BoldUser {
   id: number;
@@ -27,6 +33,13 @@ export default function UserManagement() {
   const [users, setUsers] = useState<BoldUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Selection and dialog states
+  const [selectedUser, setSelectedUser] = useState<BoldUser | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isPermissionsDialogOpen, setIsPermissionsDialogOpen] = useState(false);
 
   // Redirect non-admins
   useEffect(() => {
@@ -36,37 +49,38 @@ export default function UserManagement() {
   }, [authLoading, boldReportsInfo.isAdmin, navigate]);
 
   // Fetch users
-  useEffect(() => {
-    async function fetchUsers() {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const { data, error: fnError } = await supabase.functions.invoke('bold-users', {
-          method: 'POST',
-        });
+      const { data, error: fnError } = await supabase.functions.invoke('bold-users', {
+        method: 'POST',
+      });
 
-        if (fnError) {
-          throw new Error(fnError.message);
-        }
-
-        if (!data.success) {
-          throw new Error(data.error || 'Erro ao buscar usuários');
-        }
-
-        setUsers(data.users || []);
-      } catch (err) {
-        console.error('Error fetching users:', err);
-        setError(err instanceof Error ? err.message : 'Erro ao buscar usuários');
-      } finally {
-        setLoading(false);
+      if (fnError) {
+        throw new Error(fnError.message);
       }
-    }
 
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao buscar usuários');
+      }
+
+      setUsers(data.users || []);
+      setSelectedUser(null);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao buscar usuários');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
     if (boldReportsInfo.isAdmin) {
       fetchUsers();
     }
-  }, [boldReportsInfo.isAdmin]);
+  }, [boldReportsInfo.isAdmin, fetchUsers]);
 
   const getInitials = (name: string) => {
     if (!name) return 'U';
@@ -80,6 +94,14 @@ export default function UserManagement() {
 
   const isUserAdmin = (groups: string[]) => {
     return groups.includes('System Administrator');
+  };
+
+  const handleRowClick = (user: BoldUser) => {
+    setSelectedUser(selectedUser?.id === user.id ? null : user);
+  };
+
+  const handleSuccess = () => {
+    fetchUsers();
   };
 
   if (authLoading) {
@@ -105,6 +127,15 @@ export default function UserManagement() {
       />
       
       <main className="container max-w-7xl mx-auto px-4 py-8">
+        {/* Toolbar */}
+        <UserActionsToolbar
+          selectedUser={selectedUser}
+          onAddClick={() => setIsAddDialogOpen(true)}
+          onEditClick={() => setIsEditDialogOpen(true)}
+          onDeleteClick={() => setIsDeleteDialogOpen(true)}
+          onPermissionsClick={() => setIsPermissionsDialogOpen(true)}
+        />
+
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -112,7 +143,7 @@ export default function UserManagement() {
               <CardTitle>Usuários do Bold Reports</CardTitle>
             </div>
             <CardDescription>
-              Lista de todos os usuários cadastrados no sistema Bold Reports
+              Lista de todos os usuários cadastrados no sistema Bold Reports. Clique em uma linha para selecionar.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -155,7 +186,14 @@ export default function UserManagement() {
                       </TableRow>
                     ) : (
                       users.map((user) => (
-                        <TableRow key={user.id}>
+                        <TableRow 
+                          key={user.id}
+                          className={cn(
+                            "cursor-pointer transition-colors",
+                            selectedUser?.id === user.id && "bg-accent"
+                          )}
+                          onClick={() => handleRowClick(user)}
+                        >
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar className="h-9 w-9">
@@ -205,6 +243,30 @@ export default function UserManagement() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Dialogs */}
+      <AddUserDialog
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
+        onSuccess={handleSuccess}
+      />
+      <EditUserDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        user={selectedUser}
+        onSuccess={handleSuccess}
+      />
+      <DeleteUserDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        user={selectedUser}
+        onSuccess={handleSuccess}
+      />
+      <PermissionsDialog
+        open={isPermissionsDialogOpen}
+        onOpenChange={setIsPermissionsDialogOpen}
+        user={selectedUser}
+      />
     </div>
   );
 }

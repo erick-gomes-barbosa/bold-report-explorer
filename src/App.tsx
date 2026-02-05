@@ -10,6 +10,7 @@ import Reports from "./pages/Reports";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
 import UserManagement from "./pages/UserManagement";
+import PasswordReset from "./pages/PasswordReset";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => {
                 <Route path="/" element={<Reports />} />
                 <Route path="/bold-reports" element={<Index />} />
                 <Route path="/usuarios" element={<UserManagement />} />
+                <Route path="/trocar-senha" element={<PasswordReset />} />
               </Route>
 
               {/* Catch-all route */}
