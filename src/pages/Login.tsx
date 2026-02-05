@@ -23,7 +23,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { signIn, syncWithBoldReports } = useAuth();
+  const { signIn, syncWithBoldReports, needsPasswordReset } = useAuth();
 
   const {
     register,
@@ -58,6 +58,8 @@ export default function Login() {
         description: 'Login realizado com sucesso.',
       });
 
+      // Check if user needs password reset after successful login
+      // We need to check the profile directly since state might not be updated yet
       navigate('/');
     } catch (error) {
       toast({
