@@ -1,17 +1,9 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import type { AppRole, Profile, UserRole } from '@/integrations/supabase/external-types';
 
-type AppRole = 'admin' | 'editor' | 'viewer';
-
-interface Profile {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  avatar_url: string | null;
-  created_at: string;
-  updated_at: string;
-}
+// Types imported from external-types.ts
 
 interface AuthContextType {
   user: User | null;
@@ -36,29 +28,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch profile and role for a user
   const fetchUserData = async (userId: string) => {
     try {
-      // Use type assertion to bypass strict type checking since tables aren't in generated types yet
-      const supabaseAny = supabase as any;
-      
       // Fetch profile
-      const { data: profileData, error: profileError } = await supabaseAny
+      const { data: profileData, error: profileError } = await externalSupabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (profileData && !profileError) {
-        setProfile(profileData as Profile);
+        setProfile(profileData);
       }
 
       // Fetch role
-      const { data: roleData, error: roleError } = await supabaseAny
+      const { data: roleData, error: roleError } = await externalSupabase
         .from('user_roles')
-        .select('role')
+        .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle() as { data: UserRole | null; error: any };
 
       if (roleData && !roleError) {
-        setRole(roleData.role as AppRole);
+        setRole(roleData.role);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -67,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Set up auth state listener BEFORE checking session
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = externalSupabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
@@ -87,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+    externalSupabase.auth.getSession().then(({ data: { session: existingSession } }) => {
       setSession(existingSession);
       setUser(existingSession?.user ?? null);
 
@@ -104,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await externalSupabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -112,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { error } = await externalSupabase.auth.signUp({
       email,
       password,
       options: {
@@ -126,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await externalSupabase.auth.signOut();
     setUser(null);
     setSession(null);
     setProfile(null);
