@@ -7,14 +7,18 @@ export interface BoldReportsInfo {
   isAdmin: boolean;
   synced: boolean;
   syncError: string | null;
+  groups: string[];
 }
 
 export interface BoldAuthResponse {
   success: boolean;
+  synced?: boolean;
   boldToken?: string;
-  userId?: number;
+  userId?: number | null;
   email?: string;
   isAdmin?: boolean;
+  groups?: string[];
+  message?: string;
   error?: string;
 }
 
@@ -25,4 +29,5 @@ export const defaultBoldReportsInfo: BoldReportsInfo = {
   isAdmin: false,
   synced: false,
   syncError: null,
+  groups: [],
 };

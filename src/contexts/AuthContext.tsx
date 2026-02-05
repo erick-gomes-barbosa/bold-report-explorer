@@ -16,7 +16,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  syncWithBoldReports: (email: string, password: string) => Promise<void>;
+  syncWithBoldReports: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -96,13 +96,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Sync with Bold Reports - call edge function to authenticate and get permissions
-  const syncWithBoldReports = async (email: string, password: string) => {
+  // Sync with Bold Reports - call edge function to look up user permissions
+  const syncWithBoldReports = async (email: string) => {
     console.log('[AuthContext] Syncing with Bold Reports for:', email);
     
     try {
       const { data, error } = await supabase.functions.invoke<BoldAuthResponse>('bold-auth', {
-        body: { email, password },
+        body: { email },
       });
 
       if (error) {
@@ -116,7 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data?.success) {
-        console.log('[AuthContext] Bold Reports sync successful:', { 
+        console.log('[AuthContext] Bold Reports sync result:', { 
+          synced: data.synced,
           userId: data.userId, 
           isAdmin: data.isAdmin 
         });
@@ -125,8 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           userId: data.userId || null,
           email: data.email || null,
           isAdmin: data.isAdmin || false,
-          synced: true,
-          syncError: null,
+          synced: data.synced || false,
+          syncError: data.synced ? null : (data.message || null),
+          groups: data.groups || [],
         });
       } else {
         console.warn('[AuthContext] Bold Reports sync failed:', data?.error);
