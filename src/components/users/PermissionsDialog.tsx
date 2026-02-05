@@ -75,21 +75,17 @@ export function PermissionsDialog({ open, onOpenChange, user }: PermissionsDialo
     setError(null);
 
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('user-management', {
-        method: 'GET',
-        body: undefined,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // For GET requests, we need to use query params
+      // Use fetch directly for GET request with query params
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/user-management?userId=${user.id}`,
+        `${supabaseUrl}/functions/v1/user-management?userId=${user.id}`,
         {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'apikey': supabaseKey,
             'Content-Type': 'application/json',
           },
         }
