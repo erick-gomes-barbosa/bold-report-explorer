@@ -67,56 +67,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Internal sync function to avoid dependency issues
-  const syncBoldReportsInternal = async (email: string) => {
+  // Internal sync function with retry logic
+  const syncBoldReportsInternal = async (email: string, retries = 3) => {
     console.log('[AuthContext] Auto-syncing Bold Reports for:', email);
     setBoldSyncing(true);
     
+    let lastError: Error | null = null;
+    
     try {
-      const { data, error } = await supabase.functions.invoke<BoldAuthResponse>('bold-auth', {
-        body: { email },
-      });
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          console.log(`[AuthContext] Bold sync attempt ${attempt}/${retries}`);
+          
+          const { data, error } = await supabase.functions.invoke<BoldAuthResponse>('bold-auth', {
+            body: { email },
+          });
 
-      if (error) {
-        console.error('[AuthContext] Bold Reports auto-sync error:', error);
-        setBoldReportsInfo({
-          ...defaultBoldReportsInfo,
-          synced: false,
-          syncError: error.message,
-        });
-        return;
-      }
+          if (error) {
+            console.error(`[AuthContext] Bold Reports sync error (attempt ${attempt}):`, error);
+            lastError = error;
+            
+            if (attempt < retries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+              continue;
+            }
+            
+            setBoldReportsInfo({
+              ...defaultBoldReportsInfo,
+              synced: false,
+              syncError: error.message,
+            });
+            return;
+          }
 
-      if (data?.success) {
-        console.log('[AuthContext] Bold Reports auto-sync result:', { 
-          synced: data.synced,
-          userId: data.userId, 
-          isAdmin: data.isAdmin 
-        });
-        setBoldReportsInfo({
-          token: data.boldToken || null,
-          userId: data.userId || null,
-          email: data.email || null,
-          isAdmin: data.isAdmin || false,
-          synced: data.synced || false,
-          syncError: data.synced ? null : (data.message || null),
-          groups: data.groups || [],
-        });
-      } else {
-        console.warn('[AuthContext] Bold Reports auto-sync failed:', data?.error);
-        setBoldReportsInfo({
-          ...defaultBoldReportsInfo,
-          synced: false,
-          syncError: data?.error || 'Falha na sincronização',
-        });
+          if (data?.success) {
+            console.log('[AuthContext] Bold Reports auto-sync result:', { 
+              synced: data.synced,
+              userId: data.userId, 
+              isAdmin: data.isAdmin 
+            });
+            setBoldReportsInfo({
+              token: data.boldToken || null,
+              userId: data.userId || null,
+              email: data.email || null,
+              isAdmin: data.isAdmin || false,
+              synced: data.synced || false,
+              syncError: data.synced ? null : (data.message || null),
+              groups: data.groups || [],
+            });
+            return;
+          } else {
+            console.warn('[AuthContext] Bold Reports auto-sync failed:', data?.error);
+            lastError = new Error(data?.error || 'Falha na sincronização');
+            
+            if (attempt < retries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+              continue;
+            }
+            
+            setBoldReportsInfo({
+              ...defaultBoldReportsInfo,
+              synced: false,
+              syncError: data?.error || 'Falha na sincronização',
+            });
+          }
+        } catch (err) {
+          console.error(`[AuthContext] Bold Reports auto-sync exception (attempt ${attempt}):`, err);
+          lastError = err instanceof Error ? err : new Error('Erro inesperado');
+          
+          if (attempt < retries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            continue;
+          }
+          
+          setBoldReportsInfo({
+            ...defaultBoldReportsInfo,
+            synced: false,
+            syncError: lastError.message,
+          });
+        }
       }
-    } catch (err) {
-      console.error('[AuthContext] Bold Reports auto-sync exception:', err);
-      setBoldReportsInfo({
-        ...defaultBoldReportsInfo,
-        synced: false,
-        syncError: err instanceof Error ? err.message : 'Erro inesperado',
-      });
     } finally {
       setBoldSyncing(false);
     }
