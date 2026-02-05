@@ -50,10 +50,8 @@ export default function Login() {
       }
 
       // Sync with Bold Reports after successful Supabase login
-      // Only needs email - uses system token to look up user
-      syncWithBoldReports(data.email).catch((err) => {
-        console.warn('[Login] Bold Reports sync failed (non-blocking):', err);
-      });
+      // Await to ensure isAdmin is updated before navigation
+      await syncWithBoldReports(data.email);
 
       toast({
         title: 'Bem-vindo!',
