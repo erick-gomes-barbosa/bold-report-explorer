@@ -16,12 +16,13 @@ interface AuthRequest {
 }
 
 interface UserResponse {
-  Id: number;
+  UserId?: number;
+  Id?: number;
   Email: string;
-  FirstName: string;
-  LastName: string;
-  DisplayName: string;
-  IsActive: boolean;
+  FirstName?: string;
+  LastName?: string;
+  DisplayName?: string;
+  IsActive?: boolean;
 }
 
 interface GroupsResponse {
@@ -146,12 +147,14 @@ async function findUserByEmail(systemToken: string, email: string): Promise<User
   );
   
   if (user) {
-    console.log('[BoldAuth] Found user:', { id: user.Id, email: user.Email });
+    const userId = user.UserId || user.Id;
+    console.log('[BoldAuth] Found user:', { id: userId, email: user.Email });
+    return { ...user, Id: userId };
   } else {
     console.log('[BoldAuth] User not found in Bold Reports');
   }
   
-  return user || null;
+  return null;
 }
 
 // Get user groups
@@ -230,17 +233,18 @@ serve(async (req) => {
     }
 
     // Step 3: Get user groups to check admin status
-    const groups = await getUserGroups(systemToken, user.Id);
+    const userId = user.Id!;
+    const groups = await getUserGroups(systemToken, userId);
     const isAdmin = groups.includes('System Administrator');
 
-    console.log('[BoldAuth] Authentication successful:', { userId: user.Id, isAdmin });
+    console.log('[BoldAuth] Authentication successful:', { userId, isAdmin });
 
     return new Response(
       JSON.stringify({
         success: true,
         synced: true,
         boldToken: systemToken, // Use system token for API calls
-        userId: user.Id,
+        userId,
         email: user.Email,
         isAdmin,
         groups,
