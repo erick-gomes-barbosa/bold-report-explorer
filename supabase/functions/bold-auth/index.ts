@@ -6,24 +6,16 @@ const corsHeaders = {
 };
 
 const BOLD_SITE_ID = Deno.env.get('BOLD_SITE_ID');
+const BOLD_EMAIL = Deno.env.get('BOLD_EMAIL');
+const BOLD_EMBED_SECRET = Deno.env.get('BOLD_EMBED_SECRET');
 const BASE_URL = `https://cloud.boldreports.com/reporting/api/site/${BOLD_SITE_ID}`;
 const TOKEN_URL = `${BASE_URL}/token`;
 
 interface AuthRequest {
   email: string;
-  password: string;
 }
 
-interface TokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: string;
-  email: string;
-  error?: string;
-  error_description?: string;
-}
-
-interface UserMeResponse {
+interface UserResponse {
   Id: number;
   Email: string;
   FirstName: string;
@@ -39,8 +31,128 @@ interface GroupsResponse {
   }>;
 }
 
+// Generate HMACSHA256 signature for Embed Secret authentication
+async function generateEmbedSignature(message: string, secretKey: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secretKey);
+  const messageData = encoder.encode(message);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const bytes = new Uint8Array(signature);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Get system token using Embed Secret (authenticates as system user)
+async function getSystemToken(): Promise<string> {
+  console.log('[BoldAuth] Getting system token via Embed Secret');
+  
+  if (!BOLD_EMBED_SECRET || !BOLD_EMAIL) {
+    throw new Error('BOLD_EMBED_SECRET and BOLD_EMAIL are required');
+  }
+  
+  const nonce = crypto.randomUUID();
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const embedMessage = `embed_nonce=${nonce}&user_email=${BOLD_EMAIL}&timestamp=${timestamp}`.toLowerCase();
+  
+  const signature = await generateEmbedSignature(embedMessage, BOLD_EMBED_SECRET);
+  
+  const formData = new URLSearchParams();
+  formData.append('grant_type', 'embed_secret');
+  formData.append('username', BOLD_EMAIL);
+  formData.append('embed_nonce', nonce);
+  formData.append('embed_signature', signature);
+  formData.append('timestamp', timestamp);
+  
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formData.toString(),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[BoldAuth] System token error:', errorText);
+    throw new Error('Failed to get system token');
+  }
+  
+  const tokenData = await response.json();
+  return tokenData.access_token;
+}
+
+// Find user by email using system token
+async function findUserByEmail(systemToken: string, email: string): Promise<UserResponse | null> {
+  // Try to get all users and filter by email
+  const usersUrl = `${BASE_URL}/v1.0/users`;
+  console.log('[BoldAuth] Searching for user:', email);
+  
+  const response = await fetch(usersUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${systemToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    console.error('[BoldAuth] Failed to fetch users:', response.status);
+    return null;
+  }
+  
+  const data = await response.json();
+  const users = data.value || data.Users || data || [];
+  
+  // Find user by email (case-insensitive)
+  const user = users.find((u: UserResponse) => 
+    u.Email?.toLowerCase() === email.toLowerCase()
+  );
+  
+  if (user) {
+    console.log('[BoldAuth] Found user:', { id: user.Id, email: user.Email });
+  } else {
+    console.log('[BoldAuth] User not found in Bold Reports');
+  }
+  
+  return user || null;
+}
+
+// Get user groups
+async function getUserGroups(systemToken: string, userId: number): Promise<string[]> {
+  const groupsUrl = `${BASE_URL}/v1.0/users/${userId}/groups`;
+  console.log('[BoldAuth] Getting groups for user:', userId);
+  
+  const response = await fetch(groupsUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${systemToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    console.warn('[BoldAuth] Could not fetch user groups');
+    return [];
+  }
+  
+  const data: GroupsResponse = await response.json();
+  const groupNames = data.Groups?.map(g => g.Name) || [];
+  console.log('[BoldAuth] User groups:', groupNames);
+  
+  return groupNames;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -48,131 +160,63 @@ serve(async (req) => {
   try {
     console.log('[BoldAuth] Starting authentication flow');
     
-    if (!BOLD_SITE_ID) {
-      console.error('[BoldAuth] BOLD_SITE_ID not configured');
+    if (!BOLD_SITE_ID || !BOLD_EMBED_SECRET || !BOLD_EMAIL) {
+      console.error('[BoldAuth] Missing configuration');
       return new Response(
         JSON.stringify({ success: false, error: 'Bold Reports not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { email, password }: AuthRequest = await req.json();
+    const { email }: AuthRequest = await req.json();
 
-    if (!email || !password) {
+    if (!email) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Email and password are required' }),
+        JSON.stringify({ success: false, error: 'Email is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[BoldAuth] Authenticating user:', email);
+    console.log('[BoldAuth] Looking up user:', email);
 
-    // Step 1: Get access token from Bold Reports
-    const formData = new URLSearchParams();
-    formData.append('grant_type', 'password');
-    formData.append('username', email);
-    formData.append('password', password);
+    // Step 1: Get system token using embed secret
+    const systemToken = await getSystemToken();
+    console.log('[BoldAuth] System token obtained');
 
-    console.log('[BoldAuth] Token URL:', TOKEN_URL);
-
-    const tokenResponse = await fetch(TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    });
-
-    const tokenText = await tokenResponse.text();
-    console.log('[BoldAuth] Token response status:', tokenResponse.status);
-
-    if (!tokenResponse.ok) {
-      console.error('[BoldAuth] Token error:', tokenText.substring(0, 300));
+    // Step 2: Find user by email
+    const user = await findUserByEmail(systemToken, email);
+    
+    if (!user) {
+      // User doesn't exist in Bold Reports - still return success but not synced
+      console.log('[BoldAuth] User not found in Bold Reports, returning unsynced state');
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Credenciais inválidas no Bold Reports' 
+        JSON.stringify({
+          success: true,
+          synced: false,
+          userId: null,
+          email: email,
+          isAdmin: false,
+          message: 'Usuário não encontrado no Bold Reports',
         }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const tokenData: TokenResponse = JSON.parse(tokenText);
+    // Step 3: Get user groups to check admin status
+    const groups = await getUserGroups(systemToken, user.Id);
+    const isAdmin = groups.includes('System Administrator');
 
-    if (tokenData.error) {
-      console.error('[BoldAuth] Token API error:', tokenData.error_description || tokenData.error);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: tokenData.error_description || tokenData.error 
-        }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const accessToken = `${tokenData.token_type} ${tokenData.access_token}`;
-    console.log('[BoldAuth] Token obtained successfully');
-
-    // Step 2: Get user info from /users/me
-    const userMeUrl = `${BASE_URL}/v1.0/users/me`;
-    console.log('[BoldAuth] Getting user info from:', userMeUrl);
-
-    const userResponse = await fetch(userMeUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': accessToken,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!userResponse.ok) {
-      const userErrorText = await userResponse.text();
-      console.error('[BoldAuth] User info error:', userErrorText.substring(0, 300));
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Falha ao obter informações do usuário' 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const userData: UserMeResponse = await userResponse.json();
-    console.log('[BoldAuth] User info:', { id: userData.Id, email: userData.Email });
-
-    // Step 3: Check if user is admin by getting groups
-    const groupsUrl = `${BASE_URL}/v1.0/users/${userData.Id}/groups`;
-    console.log('[BoldAuth] Getting user groups from:', groupsUrl);
-
-    const groupsResponse = await fetch(groupsUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': accessToken,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    let isAdmin = false;
-
-    if (groupsResponse.ok) {
-      const groupsData: GroupsResponse = await groupsResponse.json();
-      console.log('[BoldAuth] User groups:', groupsData.Groups?.map(g => g.Name) || []);
-      
-      // Check if user belongs to "System Administrator" group
-      isAdmin = groupsData.Groups?.some(g => g.Name === 'System Administrator') || false;
-    } else {
-      console.warn('[BoldAuth] Could not fetch user groups, assuming non-admin');
-    }
-
-    console.log('[BoldAuth] Authentication successful:', { userId: userData.Id, isAdmin });
+    console.log('[BoldAuth] Authentication successful:', { userId: user.Id, isAdmin });
 
     return new Response(
       JSON.stringify({
         success: true,
-        boldToken: tokenData.access_token,
-        userId: userData.Id,
-        email: userData.Email,
+        synced: true,
+        boldToken: systemToken, // Use system token for API calls
+        userId: user.Id,
+        email: user.Email,
         isAdmin,
+        groups,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

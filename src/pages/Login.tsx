@@ -50,8 +50,8 @@ export default function Login() {
       }
 
       // Sync with Bold Reports after successful Supabase login
-      // This is non-blocking - failure doesn't prevent access
-      syncWithBoldReports(data.email, data.password).catch((err) => {
+      // Only needs email - uses system token to look up user
+      syncWithBoldReports(data.email).catch((err) => {
         console.warn('[Login] Bold Reports sync failed (non-blocking):', err);
       });
 
