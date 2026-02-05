@@ -177,7 +177,21 @@ async function getUserGroups(systemToken: string, userId: number): Promise<strin
     return [];
   }
   
-  const data = await response.json();
+  // Check if response has content before parsing JSON
+  const responseText = await response.text();
+  if (!responseText || responseText.trim() === '') {
+    console.log('[BoldAuth] Empty groups response - user has no groups');
+    return [];
+  }
+  
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseError) {
+    console.warn('[BoldAuth] Failed to parse groups response:', parseError);
+    return [];
+  }
+  
   console.log('[BoldAuth] Groups response type:', typeof data);
   console.log('[BoldAuth] Groups response keys:', Object.keys(data || {}));
   console.log('[BoldAuth] Groups raw response:', JSON.stringify(data).substring(0, 500));
