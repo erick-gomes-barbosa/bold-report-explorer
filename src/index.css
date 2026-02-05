@@ -2,30 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design System - Paleta Terrosa com Azul */
+/* Design System - Verde Institucional */
 
 @layer base {
   :root {
     --background: 40 33% 98%;
-    --foreground: 25 20% 15%;
+    --foreground: 220 52% 16%;
 
     --card: 40 30% 97%;
-    --card-foreground: 25 20% 15%;
+    --card-foreground: 220 52% 16%;
 
     --popover: 40 30% 97%;
-    --popover-foreground: 25 20% 15%;
+    --popover-foreground: 220 52% 16%;
 
-    --primary: 159 48% 35%;
+    --primary: 156 48% 24%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 30 25% 90%;
-    --secondary-foreground: 25 20% 20%;
+    --secondary-foreground: 220 52% 20%;
 
     --muted: 35 20% 93%;
-    --muted-foreground: 25 15% 45%;
+    --muted-foreground: 220 30% 45%;
 
-    --accent: 25 35% 85%;
-    --accent-foreground: 25 20% 15%;
+    --accent: 155 53% 31%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 65% 50%;
     --destructive-foreground: 40 33% 98%;
@@ -35,75 +35,67 @@
 
     --border: 30 20% 88%;
     --input: 30 20% 88%;
-    --ring: 159 48% 35%;
+    --ring: 156 48% 24%;
 
     --radius: 0.5rem;
 
     --sidebar-background: 35 25% 96%;
-    --sidebar-foreground: 25 20% 25%;
-    --sidebar-primary: 159 48% 35%;
+    --sidebar-foreground: 220 52% 16%;
+    --sidebar-primary: 156 48% 24%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 30 25% 90%;
-    --sidebar-accent-foreground: 25 20% 20%;
+    --sidebar-accent-foreground: 220 52% 20%;
     --sidebar-border: 30 20% 88%;
-    --sidebar-ring: 159 48% 35%;
+    --sidebar-ring: 156 48% 24%;
 
-    /* Custom tokens */
-    --earth-warm: 25 40% 75%;
-    --earth-sand: 35 30% 85%;
-    --earth-clay: 15 35% 55%;
-    --earth-stone: 30 15% 65%;
-    --green-accent: 159 48% 35%;
-    --green-light: 159 35% 90%;
+    /* Auth tokens */
+    --auth-card: 220 52% 16%;
+    --auth-button: 155 53% 31%;
   }
 
   .dark {
-    --background: 25 20% 10%;
+    --background: 220 52% 10%;
     --foreground: 35 25% 95%;
 
-    --card: 25 18% 13%;
+    --card: 220 50% 13%;
     --card-foreground: 35 25% 95%;
 
-    --popover: 25 18% 13%;
+    --popover: 220 50% 13%;
     --popover-foreground: 35 25% 95%;
 
-    --primary: 159 48% 45%;
+    --primary: 156 48% 30%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 25 15% 20%;
+    --secondary: 220 40% 20%;
     --secondary-foreground: 35 25% 95%;
 
-    --muted: 25 15% 18%;
+    --muted: 220 40% 18%;
     --muted-foreground: 30 15% 60%;
 
-    --accent: 25 20% 22%;
-    --accent-foreground: 35 25% 95%;
+    --accent: 155 53% 35%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 55% 45%;
     --destructive-foreground: 35 25% 95%;
 
     --warning: 38 80% 55%;
-    --warning-foreground: 25 20% 10%;
+    --warning-foreground: 220 52% 10%;
 
-    --border: 25 15% 22%;
-    --input: 25 15% 22%;
-    --ring: 159 48% 45%;
+    --border: 220 40% 22%;
+    --input: 220 40% 22%;
+    --ring: 156 48% 30%;
 
-    --sidebar-background: 25 18% 12%;
+    --sidebar-background: 220 50% 12%;
     --sidebar-foreground: 35 25% 95%;
-    --sidebar-primary: 159 48% 45%;
+    --sidebar-primary: 156 48% 30%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 25 20% 18%;
+    --sidebar-accent: 220 40% 18%;
     --sidebar-accent-foreground: 35 25% 95%;
-    --sidebar-border: 25 15% 22%;
-    --sidebar-ring: 159 48% 45%;
+    --sidebar-border: 220 40% 22%;
+    --sidebar-ring: 156 48% 30%;
 
-    --earth-warm: 25 30% 35%;
-    --earth-sand: 35 20% 25%;
-    --earth-clay: 15 25% 40%;
-    --earth-stone: 30 10% 40%;
-    --green-accent: 159 48% 45%;
-    --green-light: 159 25% 20%;
+    --auth-card: 220 52% 16%;
+    --auth-button: 155 53% 31%;
   }
 }
 
@@ -115,6 +107,25 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  /* Auth page styles */
+  .auth-gradient {
+    background: linear-gradient(180deg, #215c47 0%, #4a9a7f 40%, #8bc4b1 70%, #c4ddd5 100%);
+  }
+
+  .auth-card {
+    background-color: hsl(var(--auth-card));
+  }
+
+  .auth-input {
+    @apply bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-white/30;
+  }
+
+  .auth-input:focus {
+    @apply border-white/40;
   }
 }
 
