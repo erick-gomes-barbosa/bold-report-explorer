@@ -28,7 +28,7 @@ interface BoldUser {
 }
 
 export default function UserManagement() {
-  const { boldReportsInfo, loading: authLoading } = useAuth();
+  const { boldReportsInfo, loading: authLoading, boldSyncing } = useAuth();
   const navigate = useNavigate();
   const [users, setUsers] = useState<BoldUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,10 +104,10 @@ export default function UserManagement() {
     fetchUsers();
   };
 
-  if (authLoading) {
+  if (authLoading || boldSyncing) {
     return (
       <div className="min-h-screen bg-background">
-        <ReportsHeader title="Gerência de Usuários" subtitle="Carregando..." />
+        <ReportsHeader title="Gerência de Usuários" subtitle="Carregando permissões..." />
         <div className="container max-w-7xl mx-auto px-4 py-8">
           <Skeleton className="h-[400px] w-full" />
         </div>

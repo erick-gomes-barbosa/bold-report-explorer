@@ -12,6 +12,7 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   loading: boolean;
+  boldSyncing: boolean;
   needsPasswordReset: boolean;
   boldReportsInfo: BoldReportsInfo;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
@@ -29,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [boldSyncing, setBoldSyncing] = useState(false);
   const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
   const [boldReportsInfo, setBoldReportsInfo] = useState<BoldReportsInfo>(defaultBoldReportsInfo);
 
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Internal sync function to avoid dependency issues
   const syncBoldReportsInternal = async (email: string) => {
     console.log('[AuthContext] Auto-syncing Bold Reports for:', email);
+    setBoldSyncing(true);
     
     try {
       const { data, error } = await supabase.functions.invoke<BoldAuthResponse>('bold-auth', {
@@ -114,6 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         synced: false,
         syncError: err instanceof Error ? err.message : 'Erro inesperado',
       });
+    } finally {
+      setBoldSyncing(false);
     }
   };
 
@@ -261,6 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         loading,
+        boldSyncing,
         needsPasswordReset,
         boldReportsInfo,
         signIn,
