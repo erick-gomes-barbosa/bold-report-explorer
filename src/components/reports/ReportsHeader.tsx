@@ -1,4 +1,4 @@
-import { Settings, LogOut, User, ChevronDown } from 'lucide-react';
+import { Settings, LogOut, User, ChevronDown, Shield, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import logo from '@/assets/logo-pb.png';
 
@@ -21,7 +22,7 @@ export function ReportsHeader({
   title = "Relatórios de Bens Móveis",
   subtitle = "Gestão e Controle Patrimonial"
 }: ReportsHeaderProps) {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, boldReportsInfo } = useAuth();
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'U';
@@ -80,9 +81,29 @@ export function ReportsHeader({
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                        {profile?.full_name || 'Usuário'}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium leading-none">
+                          {profile?.full_name || 'Usuário'}
+                        </p>
+                        {boldReportsInfo.synced && (
+                          <Badge 
+                            variant={boldReportsInfo.isAdmin ? "default" : "secondary"}
+                            className="text-[10px] px-1.5 py-0"
+                          >
+                            {boldReportsInfo.isAdmin ? (
+                              <>
+                                <ShieldCheck className="h-3 w-3 mr-0.5" />
+                                Admin
+                              </>
+                            ) : (
+                              <>
+                                <Shield className="h-3 w-3 mr-0.5" />
+                                Usuário
+                              </>
+                            )}
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs leading-none text-muted-foreground">
                         {user.email}
                       </p>

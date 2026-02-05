@@ -2,8 +2,9 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import type { AppRole, Profile, UserRole } from '@/integrations/supabase/external-types';
-
-// Types imported from external-types.ts
+import { supabase } from '@/integrations/supabase/client';
+import type { BoldReportsInfo, BoldAuthResponse } from '@/types/boldAuth';
+import { defaultBoldReportsInfo } from '@/types/boldAuth';
 
 interface AuthContextType {
   user: User | null;
@@ -11,9 +12,11 @@ interface AuthContextType {
   profile: Profile | null;
   role: AppRole | null;
   loading: boolean;
+  boldReportsInfo: BoldReportsInfo;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
+  syncWithBoldReports: (email: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [boldReportsInfo, setBoldReportsInfo] = useState<BoldReportsInfo>(defaultBoldReportsInfo);
 
   // Fetch profile and role for a user
   const fetchUserData = async (userId: string) => {
@@ -92,6 +96,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Sync with Bold Reports - call edge function to authenticate and get permissions
+  const syncWithBoldReports = async (email: string, password: string) => {
+    console.log('[AuthContext] Syncing with Bold Reports for:', email);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke<BoldAuthResponse>('bold-auth', {
+        body: { email, password },
+      });
+
+      if (error) {
+        console.error('[AuthContext] Bold Reports sync error:', error);
+        setBoldReportsInfo({
+          ...defaultBoldReportsInfo,
+          synced: false,
+          syncError: error.message,
+        });
+        return;
+      }
+
+      if (data?.success) {
+        console.log('[AuthContext] Bold Reports sync successful:', { 
+          userId: data.userId, 
+          isAdmin: data.isAdmin 
+        });
+        setBoldReportsInfo({
+          token: data.boldToken || null,
+          userId: data.userId || null,
+          email: data.email || null,
+          isAdmin: data.isAdmin || false,
+          synced: true,
+          syncError: null,
+        });
+      } else {
+        console.warn('[AuthContext] Bold Reports sync failed:', data?.error);
+        setBoldReportsInfo({
+          ...defaultBoldReportsInfo,
+          synced: false,
+          syncError: data?.error || 'Falha na sincronização',
+        });
+      }
+    } catch (err) {
+      console.error('[AuthContext] Bold Reports sync exception:', err);
+      setBoldReportsInfo({
+        ...defaultBoldReportsInfo,
+        synced: false,
+        syncError: err instanceof Error ? err.message : 'Erro inesperado',
+      });
+    }
+  };
+
   const signIn = async (email: string, password: string) => {
     const { error } = await externalSupabase.auth.signInWithPassword({
       email,
@@ -120,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setProfile(null);
     setRole(null);
+    setBoldReportsInfo(defaultBoldReportsInfo);
   };
 
   return (
@@ -130,9 +185,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         loading,
+        boldReportsInfo,
         signIn,
         signUp,
         signOut,
+        syncWithBoldReports,
       }}
     >
       {children}

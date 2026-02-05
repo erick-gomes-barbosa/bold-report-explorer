@@ -23,7 +23,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { signIn } = useAuth();
+  const { signIn, syncWithBoldReports } = useAuth();
 
   const {
     register,
@@ -48,6 +48,12 @@ export default function Login() {
         });
         return;
       }
+
+      // Sync with Bold Reports after successful Supabase login
+      // This is non-blocking - failure doesn't prevent access
+      syncWithBoldReports(data.email, data.password).catch((err) => {
+        console.warn('[Login] Bold Reports sync failed (non-blocking):', err);
+      });
 
       toast({
         title: 'Bem-vindo!',
