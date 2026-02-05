@@ -1,196 +1,168 @@
 
-
-# Plano: Migrar Gerenciamento de Usuarios para Supabase Externo
+# Plano: Sincronizar Autenticacao Supabase + Bold Reports
 
 ## Visao Geral
 
-Migrar toda a aplicacao para usar seu Supabase externo em vez do Lovable Cloud, utilizando as credenciais ja configuradas (`EXTERNAL_SUPABASE_URL` e `EXTERNAL_SUPABASE_KEY`).
+Implementar um fluxo hibrido onde o usuario autentica via Supabase externo (sessao principal) e automaticamente valida/sincroniza com o Bold Reports para obter permissoes de relatorios.
 
----
-
-## Arquitetura Atual vs Nova
+## Arquitetura Proposta
 
 ```text
-ARQUITETURA ATUAL:
-+------------------+     +-------------------+
-|  Frontend        |---->|  Lovable Cloud    |
-|  (React App)     |     |  (Supabase)       |
-+------------------+     +-------------------+
-
-NOVA ARQUITETURA:
-+------------------+     +-------------------+
-|  Frontend        |---->|  Supabase Externo |
-|  (React App)     |     |  (Seu projeto)    |
-+------------------+     +-------------------+
++-------------------+      +----------------------+      +-------------------+
+|  Usuario          |      |  Edge Function       |      |  Bold Reports     |
+|  (Login Form)     |      |  (bold-auth)         |      |  Cloud API        |
++--------+----------+      +----------+-----------+      +---------+---------+
+         |                            |                            |
+         | 1. signIn(email, pwd)      |                            |
+         v                            |                            |
++--------+----------+                 |                            |
+|  Supabase Externo |                 |                            |
+|  (Auth + Profile) |                 |                            |
++--------+----------+                 |                            |
+         |                            |                            |
+         | 2. Session criada          |                            |
+         |                            |                            |
+         | 3. POST /bold-auth         |                            |
+         +--------------------------->|                            |
+         |                            | 4. POST /token              |
+         |                            +--------------------------->|
+         |                            |                            |
+         |                            | 5. GET /users/me           |
+         |                            +--------------------------->|
+         |                            |                            |
+         |                            | 6. GET /users/{id}/groups  |
+         |                            +--------------------------->|
+         |                            |                            |
+         |                            |<------ isAdmin, token -----+
+         |<--- boldReportsInfo -------+                            |
+         |                            |                            |
+         | 7. Armazenar no contexto   |                            |
+         v                            |                            |
++--------+----------+                 |                            |
+|  AuthContext      |                 |                            |
+|  + boldReports    |                 |                            |
++-------------------+                 |                            |
 ```
 
----
+## Detalhamento Tecnico
 
-## Alteracoes Necessarias
+### 1. Nova Edge Function: bold-auth
 
-### 1. Criar Cliente Supabase Externo
+**Arquivo:** `supabase/functions/bold-auth/index.ts`
 
-**Novo arquivo:** `src/integrations/supabase/external-client.ts`
+Responsabilidades:
+- Receber credenciais do usuario (email/senha)
+- Autenticar no Bold Reports via endpoint `/token`
+- Buscar informacoes do usuario via `/users/me`
+- Verificar se e admin via `/users/{id}/groups`
+- Retornar token Bold + flag isAdmin
 
-Criar um cliente Supabase separado que usa as variaveis de ambiente do projeto externo:
-
-```typescript
-import { createClient } from '@supabase/supabase-js';
-
-// Cliente para Supabase externo (autenticacao e dados de usuarios)
-const EXTERNAL_SUPABASE_URL = import.meta.env.VITE_EXTERNAL_SUPABASE_URL;
-const EXTERNAL_SUPABASE_KEY = import.meta.env.VITE_EXTERNAL_SUPABASE_KEY;
-
-export const externalSupabase = createClient(
-  EXTERNAL_SUPABASE_URL,
-  EXTERNAL_SUPABASE_KEY,
-  {
-    auth: {
-      storage: localStorage,
-      persistSession: true,
-      autoRefreshToken: true,
-    }
-  }
-);
+```text
+POST /bold-auth
+Body: { email: string, password: string }
+Response: {
+  success: boolean,
+  boldToken: string,
+  userId: number,
+  email: string,
+  isAdmin: boolean,
+  error?: string
+}
 ```
 
----
-
-### 2. Adicionar Variaveis de Ambiente
-
-Sera necessario adicionar as variaveis de ambiente do Supabase externo ao frontend:
-
-| Variavel | Descricao |
-|----------|-----------|
-| `VITE_EXTERNAL_SUPABASE_URL` | URL do seu projeto Supabase externo |
-| `VITE_EXTERNAL_SUPABASE_KEY` | Chave anon/publishable do seu projeto |
-
-**Importante:** Estas sao chaves publicas (publishable) e podem ficar no codigo frontend.
-
----
-
-### 3. Atualizar AuthContext
+### 2. Atualizar AuthContext
 
 **Arquivo:** `src/contexts/AuthContext.tsx`
 
-Alterar o import para usar o cliente externo:
+Adicionar:
+- Estado `boldReportsInfo` com token e permissoes
+- Funcao `syncWithBoldReports(email, password)` que chama a nova edge function
+- Chamar sincronizacao apos login bem-sucedido no Supabase
 
-```typescript
-// ANTES
-import { supabase } from '@/integrations/supabase/client';
-
-// DEPOIS
-import { externalSupabase } from '@/integrations/supabase/external-client';
-```
-
-Atualizar todas as chamadas de `supabase` para `externalSupabase`:
-
-- `externalSupabase.auth.onAuthStateChange()`
-- `externalSupabase.auth.getSession()`
-- `externalSupabase.auth.signInWithPassword()`
-- `externalSupabase.auth.signUp()`
-- `externalSupabase.auth.signOut()`
-- `externalSupabase.from('profiles').select()`
-- `externalSupabase.from('user_roles').select()`
-
----
-
-### 4. Definir Tipos para o Supabase Externo
-
-**Novo arquivo:** `src/integrations/supabase/external-types.ts`
-
-Criar tipos TypeScript para as tabelas do Supabase externo:
-
-```typescript
-export type AppRole = 'admin' | 'editor' | 'viewer';
-
-export interface Profile {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  avatar_url: string | null;
-  created_at: string;
-  updated_at: string;
+```text
+interface BoldReportsInfo {
+  token: string | null;
+  userId: number | null;
+  isAdmin: boolean;
+  synced: boolean;
 }
 
-export interface UserRole {
-  id: string;
-  user_id: string;
-  role: AppRole;
-}
-
-export interface ExternalDatabase {
-  public: {
-    Tables: {
-      profiles: {
-        Row: Profile;
-        Insert: Omit<Profile, 'created_at' | 'updated_at'>;
-        Update: Partial<Profile>;
-      };
-      user_roles: {
-        Row: UserRole;
-        Insert: Omit<UserRole, 'id'>;
-        Update: Partial<UserRole>;
-      };
-    };
-    Enums: {
-      app_role: AppRole;
-    };
-  };
+interface AuthContextType {
+  // ... campos existentes ...
+  boldReportsInfo: BoldReportsInfo;
+  syncWithBoldReports: (email: string, password: string) => Promise<void>;
 }
 ```
 
----
+### 3. Atualizar Pagina de Login
+
+**Arquivo:** `src/pages/Login.tsx`
+
+Modificar fluxo de `onSubmit`:
+1. Autenticar no Supabase externo (ja implementado)
+2. Em caso de sucesso, chamar `syncWithBoldReports(email, password)`
+3. Navegar para a pagina principal
+
+### 4. Atualizar Header para Exibir Role
+
+**Arquivo:** `src/components/reports/ReportsHeader.tsx`
+
+Adicionar badge ou indicador visual mostrando se o usuario e Admin no Bold Reports.
 
 ## Resumo de Arquivos
 
 | Acao | Arquivo | Descricao |
 |------|---------|-----------|
-| Criar | `src/integrations/supabase/external-client.ts` | Cliente Supabase externo |
-| Criar | `src/integrations/supabase/external-types.ts` | Tipos TypeScript |
-| Modificar | `src/contexts/AuthContext.tsx` | Usar cliente externo |
+| Criar | `supabase/functions/bold-auth/index.ts` | Edge function para autenticar no Bold Reports |
+| Modificar | `src/contexts/AuthContext.tsx` | Adicionar estado e funcao para Bold Reports |
+| Modificar | `src/pages/Login.tsx` | Integrar sincronizacao pos-login |
+| Modificar | `src/components/reports/ReportsHeader.tsx` | Exibir role do Bold Reports |
+| Criar | `src/types/boldAuth.ts` | Tipos TypeScript para autenticacao Bold |
 
----
-
-## Informacoes Necessarias
-
-Para prosseguir com a implementacao, vou precisar das seguintes informacoes do seu Supabase externo (sao chaves publicas, seguras para usar no frontend):
-
-1. **URL do projeto** - Exemplo: `https://xxxxxxxxxxx.supabase.co`
-2. **Chave Anon (publishable)** - A chave publica do seu projeto
-
-Essas informacoes podem ser encontradas em:
-`Supabase Dashboard > Settings > API > Project URL e Project API keys (anon/public)`
-
----
-
-## Fluxo Apos Implementacao
+## Fluxo de Login Completo
 
 ```text
-1. Usuario acessa /login ou /cadastro
+1. Usuario preenche email e senha
    |
    v
-2. Frontend usa externalSupabase.auth
+2. signIn() -> Supabase Externo
+   |
+   +-- Erro? Exibir mensagem e parar
    |
    v
-3. Supabase EXTERNO processa autenticacao
+3. syncWithBoldReports(email, senha) -> Edge Function
+   |
+   +-- Erro? Logar no console (nao bloquear acesso)
    |
    v
-4. Trigger cria profile/role no Supabase EXTERNO
+4. Armazenar boldReportsInfo no contexto
    |
    v
-5. Frontend busca dados do usuario do Supabase EXTERNO
+5. Navegar para Dashboard
    |
    v
-6. Usuario autenticado pode acessar a plataforma
+6. Header exibe role (Admin/Usuario) baseado em isAdmin
 ```
 
----
+## Consideracoes de Seguranca
 
-## Consideracoes Importantes
+1. **Senha trafega apenas para Edge Function** (HTTPS + ambiente servidor)
+2. **Token Bold Reports fica apenas em memoria** (useState, nao localStorage)
+3. **Edge Function usa secrets** para URL base do Bold Reports
+4. **Sincronizacao e opcional** - falha no Bold nao impede acesso ao sistema
 
-1. **Sessao separada:** O Supabase externo tera sua propria sessao de autenticacao
-2. **Tabelas e RLS:** Como voce ja criou tudo, a estrutura esta pronta
-3. **Edge Functions:** As edge functions continuarao usando o Lovable Cloud para Bold Reports
-4. **Dados de usuarios:** Todos os dados de usuarios (profiles, roles) estarao no seu Supabase externo
+## Tratamento de Cenarios
 
+| Cenario | Comportamento |
+|---------|---------------|
+| Usuario existe no Supabase mas nao no Bold | Login ok, boldReportsInfo.synced = false |
+| Credenciais diferentes entre sistemas | Login ok no Supabase, alerta que Bold nao sincronizou |
+| Bold Reports indisponivel | Login ok, funcionalidades de relatorio limitadas |
+| Admin no Bold | isAdmin = true, UI exibe badge e opcoes extras |
+
+## URL do Bold Reports
+
+Baseado na edge function existente, a URL base e:
+- `https://cloud.boldreports.com/reporting/api/site/{BOLD_SITE_ID}`
+
+O `BOLD_SITE_ID` ja esta configurado como secret.
