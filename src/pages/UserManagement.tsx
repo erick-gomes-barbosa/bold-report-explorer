@@ -189,10 +189,10 @@ export default function UserManagement() {
                         <TableRow 
                           key={user.id}
                           className={cn(
-                            "cursor-pointer transition-all",
+                            "cursor-pointer transition-all duration-200 ease-out",
                             selectedUser?.id === user.id 
-                              ? "ring-2 ring-primary ring-inset bg-primary/5" 
-                              : "hover:bg-muted/50"
+                              ? "ring-2 ring-primary ring-inset bg-primary/5 scale-[1.01]" 
+                              : "hover:bg-muted/50 hover:scale-[1.005]"
                           )}
                           onClick={() => handleRowClick(user)}
                         >
