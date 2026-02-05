@@ -121,11 +121,18 @@
   }
 
   .auth-input {
-    @apply bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-white/30;
+    background-color: rgba(19, 32, 64, 0.8) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: white !important;
+  }
+
+  .auth-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
   }
 
   .auth-input:focus {
-    @apply border-white/40;
+    border-color: rgba(255, 255, 255, 0.4) !important;
+    outline: none;
   }
 }
 
