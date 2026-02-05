@@ -179,7 +179,7 @@ export function PermissionsDialog({ open, onOpenChange, user, onRefresh }: Permi
               </div>
             </div>
 
-            <ScrollArea className="max-h-[200px] pr-4">
+            <ScrollArea className="h-[200px] pr-4">
               {loading ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
