@@ -58,6 +58,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Internal sync function to avoid dependency issues
+  const syncBoldReportsInternal = async (email: string) => {
+    console.log('[AuthContext] Auto-syncing Bold Reports for:', email);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke<BoldAuthResponse>('bold-auth', {
+        body: { email },
+      });
+
+      if (error) {
+        console.error('[AuthContext] Bold Reports auto-sync error:', error);
+        setBoldReportsInfo({
+          ...defaultBoldReportsInfo,
+          synced: false,
+          syncError: error.message,
+        });
+        return;
+      }
+
+      if (data?.success) {
+        console.log('[AuthContext] Bold Reports auto-sync result:', { 
+          synced: data.synced,
+          userId: data.userId, 
+          isAdmin: data.isAdmin 
+        });
+        setBoldReportsInfo({
+          token: data.boldToken || null,
+          userId: data.userId || null,
+          email: data.email || null,
+          isAdmin: data.isAdmin || false,
+          synced: data.synced || false,
+          syncError: data.synced ? null : (data.message || null),
+          groups: data.groups || [],
+        });
+      } else {
+        console.warn('[AuthContext] Bold Reports auto-sync failed:', data?.error);
+        setBoldReportsInfo({
+          ...defaultBoldReportsInfo,
+          synced: false,
+          syncError: data?.error || 'Falha na sincronização',
+        });
+      }
+    } catch (err) {
+      console.error('[AuthContext] Bold Reports auto-sync exception:', err);
+      setBoldReportsInfo({
+        ...defaultBoldReportsInfo,
+        synced: false,
+        syncError: err instanceof Error ? err.message : 'Erro inesperado',
+      });
+    }
+  };
+
   useEffect(() => {
     // Set up auth state listener BEFORE checking session
     const { data: { subscription } } = externalSupabase.auth.onAuthStateChange(
@@ -69,10 +121,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Use setTimeout to avoid Supabase client deadlock
           setTimeout(() => {
             fetchUserData(currentSession.user.id);
+            // Also sync Bold Reports on auth state change
+            if (currentSession.user.email) {
+              syncBoldReportsInternal(currentSession.user.email);
+            }
           }, 0);
         } else {
           setProfile(null);
           setRole(null);
+          setBoldReportsInfo(defaultBoldReportsInfo);
         }
 
         setLoading(false);
@@ -86,6 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (existingSession?.user) {
         fetchUserData(existingSession.user.id);
+        // Sync Bold Reports for existing session
+        if (existingSession.user.email) {
+          syncBoldReportsInternal(existingSession.user.email);
+        }
       }
 
       setLoading(false);
