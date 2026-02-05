@@ -113,7 +113,7 @@
 @layer components {
   /* Auth page styles */
   .auth-gradient {
-    background: linear-gradient(180deg, #215c47 0%, #4a9a7f 40%, #8bc4b1 70%, #c4ddd5 100%);
+    background: linear-gradient(135deg, #215c47 0%, #3d7a63 30%, #6aa88e 55%, #a8d4c4 80%, #ffffff 100%);
   }
 
   .auth-card {
